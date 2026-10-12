@@ -60,11 +60,12 @@ button { cursor: pointer; }
   height: 100vh;
   height: 100dvh;
 }
+#scrim { display: none; }
 @media (max-width: 1024px) {
   #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
   #sidebar, #aside { display: none; }
   #sidebar.open { display: flex; position: fixed; top: 0; left: 0; width: 85%; max-width: 320px; height: 100%; z-index: 50; box-shadow: var(--shadow-lg); }
-  #scrim { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40; }
+  #scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40; }
   #scrim.show { display: block; }
 }
 
