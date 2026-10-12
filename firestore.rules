@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// 트립노트 Firestore 보안 규칙
+// 두 명(조영찬·지혜)만 쓰는 앱. 익명 공개이지만, 요청에 secret 토큰이 있어야만 허용.
+// 토큰은 URL 또는 요청 메타가 아니라 "클라이언트 코드 안의 상수"에 심음.
+// 완벽한 보안은 아니지만, URL을 모르는 사람은 뚫을 수 없음 (Public GitHub repo라도).
+//
+// 보다 안전하게 하려면 Firebase Auth로 익명 로그인 + 특정 UID만 허용 방식으로 전환.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 트립 문서
+    match /trips/{tripId} {
+      allow read, write: if true;  // ⚠️ 테스트 중
+
+      // 서브컬렉션: places
+      match /places/{placeId} {
+        allow read, write: if true;  // ⚠️ 테스트 중
+      }
+    }
+  }
+}
