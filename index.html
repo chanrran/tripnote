@@ -1112,14 +1112,14 @@ const subscribePlaces = (tripId) => {
 };
 
 const saveTrip = async (data) => {
-  if (data.id) {
-    const { id, ...rest } = data;
+  const { id, ...rest } = data;
+  if (id) {
     await updateDoc(doc(db, 'trips', id), rest);
     return id;
   } else {
-    const id = 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    await setDoc(doc(db, 'trips', id), { ...data, createdAt: serverTimestamp() });
-    return id;
+    const newId = 't_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    await setDoc(doc(db, 'trips', newId), { ...rest, createdAt: serverTimestamp() });
+    return newId;
   }
 };
 const deleteTrip = async (id) => {
@@ -1132,14 +1132,14 @@ const deleteTrip = async (id) => {
 };
 
 const savePlace = async (tripId, data) => {
-  if (data.id) {
-    const { id, ...rest } = data;
+  const { id, ...rest } = data;
+  if (id) {
     await updateDoc(doc(db, 'trips', tripId, 'places', id), rest);
     return id;
   } else {
-    const id = 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    await setDoc(doc(db, 'trips', tripId, 'places', id), { ...data, createdAt: serverTimestamp() });
-    return id;
+    const newId = 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    await setDoc(doc(db, 'trips', tripId, 'places', newId), { ...rest, createdAt: serverTimestamp() });
+    return newId;
   }
 };
 const deletePlace = async (tripId, placeId) => {
