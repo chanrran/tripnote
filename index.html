@@ -56,7 +56,7 @@ button { cursor: pointer; }
 /* ─── Layout ──────────────────────────────────── */
 #app {
   display: grid;
-  grid-template-columns: 280px 1fr 400px;
+  grid-template-columns: 280px minmax(320px, 1fr) var(--aside-w, 400px);
   height: 100vh;
   height: 100dvh;
 }
@@ -499,7 +499,21 @@ button { cursor: pointer; }
 .fab:active { transform: scale(0.95); }
 
 /* ─── Aside: 지도 (desktop) ────────────────────── */
+#aside-resizer {
+  position: absolute; left: -4px; top: 0; bottom: 0; width: 9px;
+  cursor: col-resize; z-index: 30; touch-action: none;
+}
+#aside-resizer::after {
+  content: ''; position: absolute; left: 3px; top: 50%; width: 3px; height: 48px;
+  transform: translateY(-50%); border-radius: 2px; background: var(--ink-faint); opacity: 0.45;
+  transition: opacity .15s, background .15s;
+}
+#aside-resizer:hover::after, #aside-resizer.dragging::after { opacity: 1; background: var(--accent); }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing #map-desktop { pointer-events: none; }
+@media (max-width: 1024px) { #aside-resizer { display: none; } }
 #aside {
+  position: relative;
   background: var(--paper);
   border-left: 1px solid var(--rule);
   display: flex;
@@ -868,6 +882,7 @@ button { cursor: pointer; }
 
   <!-- 우측: 지도 (desktop만) -->
   <aside id="aside">
+    <div id="aside-resizer" title="드래그해서 지도 크기 조절 (더블클릭: 기본 크기)"></div>
     <div style="position:relative; flex:1; min-height:0;">
       <div id="map-desktop" style="position:absolute; inset:0;"></div>
       <div class="map-controls">
@@ -2006,6 +2021,43 @@ const readUrl = () => {
     state.pendingTrip = trip;
   }
 };
+
+
+// 지도 영역 크기 조절 (PC) — 왼쪽 경계를 드래그, 더블클릭하면 기본 크기
+(() => {
+  const handle = document.getElementById('aside-resizer');
+  if (!handle) return;
+  const root = document.documentElement;
+  const MIN = 280, DEFAULT = 400;
+  const maxW = () => Math.max(MIN, window.innerWidth - 280 - 320);
+  const clamp = (w) => Math.min(maxW(), Math.max(MIN, w));
+  const apply = (w) => root.style.setProperty('--aside-w', clamp(w) + 'px');
+  const refreshMap = () => { if (state.map && window.google) google.maps.event.trigger(state.map, 'resize'); };
+  try { const saved = parseInt(localStorage.getItem('tripnote.asideW')); if (saved) apply(saved); } catch (e) {}
+  let dragging = false;
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true; handle.setPointerCapture(e.pointerId);
+    handle.classList.add('dragging'); document.body.classList.add('resizing');
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    apply(window.innerWidth - e.clientX);
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false; handle.classList.remove('dragging'); document.body.classList.remove('resizing');
+    try { localStorage.setItem('tripnote.asideW', parseInt(getComputedStyle(root).getPropertyValue('--aside-w'))); } catch (e) {}
+    refreshMap();
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('dblclick', () => {
+    apply(DEFAULT);
+    try { localStorage.removeItem('tripnote.asideW'); } catch (e) {}
+    refreshMap();
+  });
+  window.addEventListener('resize', () => { const w = parseInt(getComputedStyle(root).getPropertyValue('--aside-w')); if (w) apply(w); refreshMap(); });
+})();
 
 // Mobile sidebar toggle
 $('#btn-menu').onclick = () => {
