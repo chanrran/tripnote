@@ -1104,9 +1104,12 @@ const subscribePlaces = (tripId) => {
     renderPlaces();
     return;
   }
-  const q = query(collection(db, 'trips', tripId, 'places'), orderBy('day'), orderBy('orderNo'));
+  // orderBy 체인은 Firestore composite index를 요구하므로, 서버 정렬은 생략하고 클라이언트에서 정렬
+  const q = collection(db, 'trips', tripId, 'places');
   state.placesUnsub = onSnapshot(q, (snap) => {
-    state.places = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    state.places = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.day - b.day) || (a.orderNo - b.orderNo));
     renderPlaces();
     renderMap();
   }, (err) => {
@@ -1222,6 +1225,9 @@ const renderCurrentTrip = () => {
   renderTripMeta();
   // 중요: 중앙 영역을 Day에 맞게 다시 렌더
   renderPlaces();
+  // 지도도 다시 그리기 (places 로드 실패해도 레전드만이라도)
+  if (!state.map) ensureMap();
+  renderMap();
 };
 
 const renderTripMeta = () => {
