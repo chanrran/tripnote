@@ -137,12 +137,11 @@ button { cursor: pointer; }
   position: relative;
 }
 .trip-item:hover { background: var(--rule-soft); }
-.trip-item:hover .trip-item-del { opacity: 1; }
 .trip-item.active { background: var(--accent-soft); border-color: var(--accent); }
 .trip-item .t-title {
   font-weight: 500;
   font-size: 14px;
-  padding-right: 24px;
+  padding-right: 28px;
 }
 .trip-item.active .t-title { color: var(--accent); }
 .trip-item .t-date {
@@ -150,29 +149,31 @@ button { cursor: pointer; }
   color: var(--ink-faint);
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
+  padding-right: 28px;
 }
 .trip-item-del {
   position: absolute;
   top: 50%;
-  right: 8px;
+  right: 6px;
   transform: translateY(-50%);
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 4px;
   background: transparent;
   border: none;
   color: var(--ink-faint);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.15s;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.trip-item-del:hover { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
-@media (hover: none) {
-  .trip-item-del { opacity: 0.5; } /* 터치 기기에서는 항상 보이게 */
+.trip-item-del:hover {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+  opacity: 1;
 }
 
 /* ─── Main: Day 탭 + 장소 리스트 ─────────────────── */
@@ -401,9 +402,10 @@ button { cursor: pointer; }
 .chip.hours { background: color-mix(in srgb, var(--sage) 15%, transparent); color: var(--sage); }
 .chip.closed { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
 .chip.cost { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
-.chip.mode-walking { background: color-mix(in srgb, var(--sage) 15%, transparent); color: var(--sage); }
+.chip.mode-walk { background: color-mix(in srgb, var(--sage) 15%, transparent); color: var(--sage); }
 .chip.mode-transit { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
-.chip.mode-driving { background: color-mix(in srgb, var(--warm) 20%, transparent); color: var(--warm); }
+.chip.mode-drive { background: color-mix(in srgb, var(--warm) 20%, transparent); color: var(--warm); }
+.chip.mode-flight { background: color-mix(in srgb, var(--marker) 20%, transparent); color: var(--marker); }
 
 .place-actions {
   display: flex;
@@ -928,13 +930,17 @@ button { cursor: pointer; }
 
       <div class="field-row">
         <div class="field">
-          <label class="field-label">도착</label>
+          <label class="field-label">여기 도착</label>
           <input type="time" class="field-input" id="place-arrive-input">
         </div>
         <div class="field">
-          <label class="field-label">출발</label>
+          <label class="field-label">여기서 출발</label>
           <input type="time" class="field-input" id="place-depart-input">
         </div>
+      </div>
+      <div style="font-size:11px; color:var(--ink-faint); margin:-6px 0 14px; line-height:1.5;">
+        💡 머무는 시간은 "여기 도착~여기서 출발"로 입력하세요.<br>
+        비행기 등 이동은 <b>출발지</b>(예: 김포공항)와 <b>도착지</b>(예: 간사이공항)를 각각 장소로 추가하세요.
       </div>
 
       <div class="field">
@@ -943,6 +949,7 @@ button { cursor: pointer; }
           <button type="button" class="mode-opt active" data-mode="WALK">🚶 도보</button>
           <button type="button" class="mode-opt" data-mode="TRANSIT">🚌 대중교통</button>
           <button type="button" class="mode-opt" data-mode="DRIVE">🚗 차</button>
+          <button type="button" class="mode-opt" data-mode="FLIGHT">✈️ 비행기</button>
         </div>
       </div>
 
@@ -1093,10 +1100,10 @@ const haversine = (a, b) => {
 const fmtDistance = (m) => m < 1000 ? `${Math.round(m)}m` : `${(m/1000).toFixed(1)}km`;
 const estTime = (meters, mode) => {
   // 추정 소요시간 (분)
-  const speed = { WALK: 70, TRANSIT: 300, DRIVE: 500 };  // m/min
+  const speed = { WALK: 70, TRANSIT: 300, DRIVE: 500, FLIGHT: 12000 };  // m/min
   return Math.max(1, Math.round(meters / (speed[mode] || 70)));
 };
-const fmtMode = (mode) => ({WALK:'도보', TRANSIT:'대중교통', DRIVE:'차'}[mode] || '도보');
+const fmtMode = (mode) => ({WALK:'도보', TRANSIT:'대중교통', DRIVE:'차', FLIGHT:'비행기'}[mode] || '도보');
 const won = (n) => (n == null || n === '') ? '' : `${Number(n).toLocaleString('ko-KR')}원`;
 
 // ───────────────────────────────────────
@@ -1195,12 +1202,38 @@ const renderTripsList = () => {
     const dates = (t.startDate && t.endDate)
       ? `${t.startDate.slice(2).replace(/-/g,'.')}–${t.endDate.slice(5).replace(/-/g,'.')} · ${total}일`
       : '';
+    const delBtn = el('button', {
+      class: 'trip-item-del',
+      title: '여행 삭제',
+      'aria-label': '여행 삭제',
+      onclick: async (e) => {
+        e.stopPropagation();
+        const placesCount = (t.id === state.currentTripId) ? state.places.length : null;
+        const countTxt = placesCount != null ? `\n포함된 장소 ${placesCount}개도 모두 사라집니다.` : '\n포함된 모든 장소도 함께 사라집니다.';
+        const msg = `⚠️ 정말 삭제하시겠습니까?\n\n여행: "${t.title}"${countTxt}\n\n이 작업은 되돌릴 수 없습니다.`;
+        if (!confirm(msg)) return;
+        try {
+          await deleteTrip(t.id);
+          toast('여행이 삭제되었습니다');
+          if (state.currentTripId === t.id) {
+            state.currentTripId = null;
+            state.currentTrip = null;
+            renderCurrentTrip();
+            subscribePlaces(null);
+            updateUrl();
+          }
+        } catch (err) {
+          console.error(err); toast('삭제 실패: ' + err.message);
+        }
+      },
+    }, '🗑');
     const item = el('div', {
       class: 'trip-item' + (t.id === state.currentTripId ? ' active' : ''),
       onclick: () => selectTrip(t.id),
     }, [
       el('div', { class: 't-title' }, t.title || '(제목 없음)'),
       el('div', { class: 't-date' }, dates),
+      delBtn,
     ]);
     list.appendChild(item);
   });
@@ -1377,7 +1410,7 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
 // ───────────────────────────────────────
 // Map rendering
 // ───────────────────────────────────────
-const MAP_COLORS = { WALK: '#6b8e5a', TRANSIT: '#1f4b8e', DRIVE: '#e0a74e' };
+const MAP_COLORS = { WALK: '#6b8e5a', TRANSIT: '#1f4b8e', DRIVE: '#e0a74e', FLIGHT: '#c0392b' };
 
 const ensureMap = () => {
   if (state.map) return;
