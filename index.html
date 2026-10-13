@@ -313,11 +313,11 @@ button { cursor: pointer; }
 }
 .place {
   position: relative;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   cursor: pointer;
   transition: box-shadow 0.15s;
 }
@@ -325,7 +325,7 @@ button { cursor: pointer; }
 .place.now { border-color: var(--warm); background: color-mix(in srgb, var(--warm) 10%, var(--paper)); }
 .place .p-num {
   position: absolute;
-  left: -28px; top: 10px;
+  left: -28px; top: 8px;
   width: 22px; height: 22px;
   border-radius: 50%;
   background: var(--accent);
@@ -360,6 +360,12 @@ button { cursor: pointer; }
   margin-left: 6px;
   font-weight: 600;
 }
+.place .p-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.place .p-nav {
+  width: 28px; height: 28px; margin: -4px -4px -4px 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--accent-soft); text-decoration: none; font-size: 14px;
+}
 .place .p-time {
   font-variant-numeric: tabular-nums;
   color: var(--ink-soft);
@@ -375,8 +381,8 @@ button { cursor: pointer; }
 .place .p-memo {
   font-size: 12px;
   color: var(--ink-soft);
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 4px;
+  padding-top: 4px;
   border-top: 1px dashed var(--rule-soft);
   white-space: pre-wrap;
 }
@@ -385,7 +391,7 @@ button { cursor: pointer; }
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  margin-top: 6px;
+  margin-top: 4px;
   flex-wrap: wrap;
 }
 .place .p-chips {
@@ -1370,11 +1376,21 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
   });
   card.appendChild(el('div', { class: 'p-num' }, String(num)));
   const timeTxt = (p.arriveTime || '') + (p.departTime ? ' – ' + p.departTime : '');
+  const mapsUrl = (p.lat != null && p.lng != null)
+    ? `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}` + (p.placeId ? `&destination_place_id=${encodeURIComponent(p.placeId)}` : '')
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name || '')}`;
   const nameChildren = [p.name || '(장소 미지정)'];
   if (isNowFlag) nameChildren.push(el('span', { class: 'now-badge' }, '지금'));
   card.appendChild(el('div', { class: 'p-head' }, [
     el('div', { class: 'p-name' }, nameChildren),
-    el('div', { class: 'p-time' }, timeTxt),
+    el('div', { class: 'p-side' }, [
+      el('div', { class: 'p-time' }, timeTxt),
+      el('a', {
+        class: 'p-nav', href: mapsUrl, target: '_blank', rel: 'noopener',
+        title: '구글맵 길찾기', 'aria-label': '구글맵 길찾기',
+        onclick: (e) => e.stopPropagation(),
+      }, '🧭'),
+    ]),
   ]));
   if (p.address) card.appendChild(el('div', { class: 'p-addr' }, p.address));
   if (p.memo) card.appendChild(el('div', { class: 'p-memo' }, p.memo));
@@ -1385,20 +1401,6 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
   if (p.cost) chips.push(el('span', { class: 'chip cost' }, won(p.cost)));
   if (chips.length) card.appendChild(el('div', { class: 'p-row' }, [el('div', { class: 'p-chips' }, chips)]));
 
-  // Actions
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}` +
-    (p.placeId ? `&destination_place_id=${encodeURIComponent(p.placeId)}` : '');
-  card.appendChild(el('div', { class: 'place-actions' }, [
-    el('a', {
-      class: 'place-action primary', href: mapsUrl, target: '_blank', rel: 'noopener',
-      style: 'text-decoration: none;',
-      onclick: (e) => e.stopPropagation(),
-    }, '🧭 구글맵 길찾기'),
-    el('button', {
-      class: 'place-action',
-      onclick: (e) => { e.stopPropagation(); openPlaceModal(p); }
-    }, '✎ 수정'),
-  ]));
   parent.appendChild(card);
 
   // 이동 레그 (다음 장소까지)
