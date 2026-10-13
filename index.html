@@ -807,7 +807,10 @@ button { cursor: pointer; }
       </div>
       <div class="trip-header-row" id="trip-header-desktop">
         <h2 class="trip-title" id="trip-title">여행을 선택하세요</h2>
-        <div class="trip-dates" id="trip-dates"></div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="trip-dates" id="trip-dates"></div>
+          <button class="btn btn-primary" id="btn-add-place-header" style="padding:6px 12px; font-size:13px; display:none;">＋ 장소 추가</button>
+        </div>
       </div>
       <div class="trip-meta" id="trip-meta"></div>
       <div class="day-tabs" id="day-tabs"></div>
@@ -1182,11 +1185,13 @@ const renderCurrentTrip = () => {
     $('#trip-dates').textContent = '';
     $('#trip-meta').innerHTML = '';
     $('#day-tabs').innerHTML = '';
+    $('#btn-add-place-header').style.display = 'none';
     $('#places-list').innerHTML = `<div class="empty-state"><h3>트립노트</h3><p>왼쪽에서 여행을 선택하거나 새로 만드세요.</p></div>`;
     return;
   }
   $('#trip-title').textContent = t.title || '(제목 없음)';
   $('#trip-title-mobile').textContent = t.title || '(제목 없음)';
+  $('#btn-add-place-header').style.display = '';
   const dates = (t.startDate && t.endDate)
     ? `${fmtDate(t.startDate)} – ${fmtDate(t.endDate)}`
     : '';
@@ -1215,6 +1220,8 @@ const renderCurrentTrip = () => {
 
   // Meta: 비용 합계
   renderTripMeta();
+  // 중요: 중앙 영역을 Day에 맞게 다시 렌더
+  renderPlaces();
 };
 
 const renderTripMeta = () => {
@@ -1243,13 +1250,12 @@ const renderPlaces = () => {
     : state.places.filter(p => p.day === state.currentDay);
 
   if (!dayPlaces.length) {
-    list.appendChild(el('div', { class: 'empty-state' }, [
-      el('h3', {}, 'Day ' + state.currentDay),
-      el('p', {}, '아래 버튼으로 첫 장소를 추가하세요.'),
-      el('button', { class: 'btn btn-primary', onclick: openPlaceModal }, '+ 장소 추가'),
+    const dayLabel = state.currentDay === 0 ? '전체' : `Day ${state.currentDay}`;
+    list.appendChild(el('div', { class: 'empty-state', style: 'padding: 60px 20px;' }, [
+      el('h3', {}, dayLabel + '에 아직 장소가 없습니다'),
+      el('p', {}, '검색으로 장소를 추가하면 지도에 핀이 생기고\n여행 동선이 자동으로 그려집니다.'),
+      el('button', { class: 'btn btn-primary', style: 'margin-top:12px; padding:12px 20px; font-size:14px;', onclick: () => openPlaceModal() }, '＋ 장소 추가'),
     ]));
-    // Desktop에서도 추가 버튼
-    list.appendChild(el('button', { class: 'add-place-btn', onclick: openPlaceModal }, '+ 장소 추가'));
     return;
   }
 
@@ -1274,7 +1280,7 @@ const renderPlaces = () => {
     });
   }
   list.appendChild(timeline);
-  list.appendChild(el('button', { class: 'add-place-btn', onclick: openPlaceModal }, '+ 장소 추가'));
+  list.appendChild(el('button', { class: 'add-place-btn', onclick: () => openPlaceModal() }, '＋ 장소 추가'));
 };
 
 const isNow = (place, next, nowTime) => {
@@ -1589,8 +1595,11 @@ $('#trip-title-mobile').onclick = () => { if (state.currentTrip) openTripModal(s
 // ───────────────────────────────────────
 const openPlaceModal = (place) => {
   if (!state.currentTripId) { toast('여행을 먼저 선택하세요'); return; }
+  // onclick으로 호출될 때 Event 객체가 들어오는 경우 null로 처리 (버그 방지)
+  if (place && (place instanceof Event || !place.id)) place = null;
   state.editingPlaceId = place?.id || null;
-  $('#modal-place-title').textContent = place ? '장소 수정' : (`장소 추가 · Day ${state.currentDay || 1}`);
+  const day = state.currentDay > 0 ? state.currentDay : 1;
+  $('#modal-place-title').textContent = place ? '장소 수정' : `장소 추가 · Day ${day}`;
 
   $('#place-search-input').value = place?.name || '';
   $('#place-arrive-input').value = place?.arriveTime || '';
@@ -1628,7 +1637,10 @@ const showSelectedPlace = (sp) => {
 
 // Google Places Autocomplete (legacy — 가장 간단)
 const setupAutocomplete = () => {
-  if (!window.google?.maps?.places) return;
+  if (!window.google?.maps?.places) {
+    console.warn('Google Places library not loaded');
+    return;
+  }
   const input = $('#place-search-input');
   // 기존 인스턴스 제거
   if (state.autocomplete) {
@@ -1643,24 +1655,29 @@ const setupAutocomplete = () => {
   if (state.map) {
     opts.bounds = state.map.getBounds() || undefined;
   }
-  state.autocomplete = new google.maps.places.Autocomplete(input, opts);
-  state.autocomplete.addListener('place_changed', () => {
-    const p = state.autocomplete.getPlace();
-    if (!p || !p.geometry?.location) {
-      toast('장소 정보를 찾을 수 없습니다');
-      return;
-    }
-    const hours = p.opening_hours?.weekday_text?.[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
-    state.selectedPlace = {
-      name: p.name,
-      address: p.formatted_address,
-      lat: p.geometry.location.lat(),
-      lng: p.geometry.location.lng(),
-      placeId: p.place_id,
-      hours: hours || null,
-    };
-    showSelectedPlace(state.selectedPlace);
-  });
+  try {
+    state.autocomplete = new google.maps.places.Autocomplete(input, opts);
+    state.autocomplete.addListener('place_changed', () => {
+      const p = state.autocomplete.getPlace();
+      if (!p || !p.geometry?.location) {
+        toast('장소 정보를 찾을 수 없습니다');
+        return;
+      }
+      const hours = p.opening_hours?.weekday_text?.[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
+      state.selectedPlace = {
+        name: p.name,
+        address: p.formatted_address,
+        lat: p.geometry.location.lat(),
+        lng: p.geometry.location.lng(),
+        placeId: p.place_id,
+        hours: hours || null,
+      };
+      showSelectedPlace(state.selectedPlace);
+    });
+  } catch (e) {
+    console.error('Autocomplete init failed:', e);
+    toast('장소 검색을 초기화하지 못했습니다. 콘솔을 확인하세요.');
+  }
 };
 
 // 교통수단 선택
@@ -1723,8 +1740,9 @@ $('#btn-delete-place').onclick = async () => {
   }
 };
 
-// 모바일 FAB
+// 모바일 FAB & 데스크톱 상단 "+ 장소 추가"
 $('#btn-fab-add').onclick = () => openPlaceModal();
+$('#btn-add-place-header').onclick = () => openPlaceModal();
 
 // ───────────────────────────────────────
 // Navigation / URL
