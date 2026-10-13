@@ -366,6 +366,8 @@ button { cursor: pointer; }
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%; background: var(--accent-soft); text-decoration: none; font-size: 14px;
 }
+.place .p-edit { border: none; margin: -4px 0 -4px 0; color: var(--ink-soft); background: var(--rule-soft); font-size: 15px; padding: 0; }
+.place .p-side .p-nav:first-of-type { margin-right: 0; }
 .place .p-time {
   font-variant-numeric: tabular-nums;
   color: var(--ink-soft);
@@ -1390,6 +1392,10 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
         title: '구글맵 길찾기', 'aria-label': '구글맵 길찾기',
         onclick: (e) => e.stopPropagation(),
       }, '🧭'),
+      el('button', {
+        class: 'p-nav p-edit', title: '수정', 'aria-label': '수정',
+        onclick: (e) => { e.stopPropagation(); openPlaceModal(p); },
+      }, '✎'),
     ]),
   ]));
   if (p.address) card.appendChild(el('div', { class: 'p-addr' }, p.address));
