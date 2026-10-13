@@ -923,7 +923,8 @@ button { cursor: pointer; }
       </div>
 
       <div class="selected-place" id="selected-place" hidden>
-        <div class="sp-name" id="sp-name"></div>
+        <label class="field-label" for="sp-name-input">표시 이름 (원하는 이름으로 바꿀 수 있어요. 예: 집, 호텔)</label>
+        <input type="text" class="field-input" id="sp-name-input" autocomplete="off" style="margin-bottom:8px">
         <div class="sp-addr" id="sp-addr"></div>
         <div class="sp-coord" id="sp-coord"></div>
       </div>
@@ -1735,7 +1736,7 @@ const setupTimeInputs = () => {
 
 const showSelectedPlace = (sp) => {
   if (!sp) { $('#selected-place').hidden = true; return; }
-  $('#sp-name').textContent = sp.name || '';
+  $('#sp-name-input').value = sp.name || '';
   $('#sp-addr').textContent = sp.address || '';
   $('#sp-coord').textContent = sp.lat && sp.lng ? `${sp.lat.toFixed(5)}, ${sp.lng.toFixed(5)}` : '';
   if (sp.hours) {
@@ -1912,9 +1913,15 @@ $('#btn-save-place').onclick = async () => {
     return;
   }
   const sp = state.selectedPlace || {};
+  const customName = $('#sp-name-input').value.trim();
+  const a = $('#place-arrive-input').value, d = $('#place-depart-input').value;
+  if (a && d && d < a) {
+    toast('출발 시간이 도착 시간보다 빠릅니다. 확인해 주세요');
+    return;
+  }
   const data = {
     day: state.currentDay > 0 ? state.currentDay : 1,
-    name: sp.name || typedName,
+    name: (state.selectedPlace ? customName : '') || sp.name || typedName,
     address: sp.address || '',
     lat: sp.lat ?? null,
     lng: sp.lng ?? null,
