@@ -134,12 +134,15 @@ button { cursor: pointer; }
   cursor: pointer;
   border: 1px solid transparent;
   transition: background 0.15s;
+  position: relative;
 }
 .trip-item:hover { background: var(--rule-soft); }
+.trip-item:hover .trip-item-del { opacity: 1; }
 .trip-item.active { background: var(--accent-soft); border-color: var(--accent); }
 .trip-item .t-title {
   font-weight: 500;
   font-size: 14px;
+  padding-right: 24px;
 }
 .trip-item.active .t-title { color: var(--accent); }
 .trip-item .t-date {
@@ -147,6 +150,29 @@ button { cursor: pointer; }
   color: var(--ink-faint);
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
+}
+.trip-item-del {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.trip-item-del:hover { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger); }
+@media (hover: none) {
+  .trip-item-del { opacity: 0.5; } /* 터치 기기에서는 항상 보이게 */
 }
 
 /* ─── Main: Day 탭 + 장소 리스트 ─────────────────── */
@@ -1649,48 +1675,150 @@ const showSelectedPlace = (sp) => {
   $('#selected-place').hidden = false;
 };
 
-// Google Places Autocomplete (legacy — 가장 간단)
+// Google Places Autocomplete (New Places API via REST)
+// Legacy google.maps.places.Autocomplete는 "Places API (New)"만 활성화된 프로젝트에서는 작동하지 않음.
+// 따라서 fetch로 Places API (New) 엔드포인트를 직접 호출.
+let acDebounceTimer = null;
+let acSessionToken = null;
+
+const genSessionToken = () => {
+  // UUID v4 간이 생성 (세션 단위 과금을 위한 토큰)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+};
+
 const setupAutocomplete = () => {
-  if (!window.google?.maps?.places) {
-    console.warn('Google Places library not loaded');
+  const input = $('#place-search-input');
+  const wrap = input.closest('.autocomplete-wrap');
+  // 기존 결과 리스트 제거
+  wrap.querySelector('.autocomplete-results')?.remove();
+  const resultsEl = el('div', { class: 'autocomplete-results', hidden: '' });
+  wrap.appendChild(resultsEl);
+  // 세션 시작
+  acSessionToken = genSessionToken();
+
+  // 디바운스된 자동완성 호출
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearTimeout(acDebounceTimer);
+    if (q.length < 1) {
+      resultsEl.hidden = true;
+      return;
+    }
+    acDebounceTimer = setTimeout(() => fetchAutocomplete(q, resultsEl), 300);
+  });
+
+  // 바깥 클릭 시 숨기기
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) resultsEl.hidden = true;
+  }, { once: false });
+};
+
+const fetchAutocomplete = async (query, resultsEl) => {
+  try {
+    // 지도 중심 기준 location bias (더 정확한 결과)
+    const bias = {};
+    if (state.map) {
+      const c = state.map.getCenter();
+      bias.locationBias = {
+        circle: {
+          center: { latitude: c.lat(), longitude: c.lng() },
+          radius: 50000.0,
+        }
+      };
+    }
+    const body = {
+      input: query,
+      languageCode: 'ko',
+      sessionToken: acSessionToken,
+      ...bias,
+    };
+    const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': MAPS_API_KEY,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Autocomplete API error', res.status, errText);
+      resultsEl.innerHTML = `<div class="autocomplete-item" style="color:var(--danger)">검색 실패 (${res.status})</div>`;
+      resultsEl.hidden = false;
+      return;
+    }
+    const data = await res.json();
+    const suggestions = data.suggestions || [];
+    renderAutocompleteResults(suggestions, resultsEl);
+  } catch (e) {
+    console.error('fetchAutocomplete error', e);
+    resultsEl.innerHTML = `<div class="autocomplete-item" style="color:var(--danger)">네트워크 오류</div>`;
+    resultsEl.hidden = false;
+  }
+};
+
+const renderAutocompleteResults = (suggestions, resultsEl) => {
+  resultsEl.innerHTML = '';
+  if (!suggestions.length) {
+    resultsEl.innerHTML = `<div class="autocomplete-item" style="color:var(--ink-faint)">결과 없음 — 이름만으로 저장 가능 (좌표 없이)</div>`;
+    resultsEl.hidden = false;
     return;
   }
-  const input = $('#place-search-input');
-  // 기존 인스턴스 제거
-  if (state.autocomplete) {
-    google.maps.event.clearInstanceListeners(input);
-    state.autocomplete = null;
-  }
-  // 결과 바이어스: 현재 지도 뷰 기반
-  const opts = {
-    fields: ['place_id', 'name', 'formatted_address', 'geometry', 'opening_hours'],
-    types: ['establishment', 'geocode'],
-  };
-  if (state.map) {
-    opts.bounds = state.map.getBounds() || undefined;
-  }
+  suggestions.forEach(s => {
+    const p = s.placePrediction;
+    if (!p) return;
+    const name = p.structuredFormat?.mainText?.text || p.text?.text || '';
+    const addr = p.structuredFormat?.secondaryText?.text || '';
+    const item = el('div', {
+      class: 'autocomplete-item',
+      onclick: () => selectAutocompleteItem(p),
+    }, [
+      el('div', { class: 'ac-name' }, name),
+      addr ? el('div', { class: 'ac-addr' }, addr) : null,
+    ].filter(Boolean));
+    resultsEl.appendChild(item);
+  });
+  resultsEl.hidden = false;
+};
+
+const selectAutocompleteItem = async (prediction) => {
+  const resultsEl = $('.autocomplete-results');
+  if (resultsEl) resultsEl.hidden = true;
+  // 상세 정보 조회
   try {
-    state.autocomplete = new google.maps.places.Autocomplete(input, opts);
-    state.autocomplete.addListener('place_changed', () => {
-      const p = state.autocomplete.getPlace();
-      if (!p || !p.geometry?.location) {
-        toast('장소 정보를 찾을 수 없습니다');
-        return;
-      }
-      const hours = p.opening_hours?.weekday_text?.[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
-      state.selectedPlace = {
-        name: p.name,
-        address: p.formatted_address,
-        lat: p.geometry.location.lat(),
-        lng: p.geometry.location.lng(),
-        placeId: p.place_id,
-        hours: hours || null,
-      };
-      showSelectedPlace(state.selectedPlace);
+    const url = `https://places.googleapis.com/v1/places/${prediction.placeId}?sessionToken=${acSessionToken}`;
+    const res = await fetch(url, {
+      headers: {
+        'X-Goog-Api-Key': MAPS_API_KEY,
+        'X-Goog-FieldMask': 'id,displayName,formattedAddress,location,regularOpeningHours',
+      },
     });
+    if (!res.ok) {
+      console.error('place details failed', res.status);
+      toast('장소 상세 정보를 가져오지 못했습니다');
+      return;
+    }
+    const p = await res.json();
+    const todayIdx = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+    const hoursToday = p.regularOpeningHours?.weekdayDescriptions?.[todayIdx] || null;
+    state.selectedPlace = {
+      name: p.displayName?.text || prediction.structuredFormat?.mainText?.text || '',
+      address: p.formattedAddress || '',
+      lat: p.location?.latitude,
+      lng: p.location?.longitude,
+      placeId: p.id,
+      hours: hoursToday,
+    };
+    $('#place-search-input').value = state.selectedPlace.name;
+    showSelectedPlace(state.selectedPlace);
+    // 세션 종료 → 새 세션 시작
+    acSessionToken = genSessionToken();
   } catch (e) {
-    console.error('Autocomplete init failed:', e);
-    toast('장소 검색을 초기화하지 못했습니다. 콘솔을 확인하세요.');
+    console.error('select autocomplete error', e);
+    toast('장소 선택 중 오류 발생');
   }
 };
 
@@ -1708,18 +1836,21 @@ const updateModePicker = () => {
 };
 
 $('#btn-save-place').onclick = async () => {
-  if (!state.selectedPlace || !state.selectedPlace.lat) {
-    toast('장소를 검색해서 선택하세요');
+  // 자동완성 선택 없이도 저장 가능하도록 fallback: input의 텍스트를 그대로 이름으로 사용
+  const typedName = $('#place-search-input').value.trim();
+  if (!state.selectedPlace && !typedName) {
+    toast('장소 이름을 입력하거나 검색해서 선택하세요');
     return;
   }
+  const sp = state.selectedPlace || {};
   const data = {
     day: state.currentDay > 0 ? state.currentDay : 1,
-    name: state.selectedPlace.name,
-    address: state.selectedPlace.address || '',
-    lat: state.selectedPlace.lat,
-    lng: state.selectedPlace.lng,
-    placeId: state.selectedPlace.placeId || '',
-    hours: state.selectedPlace.hours || '',
+    name: sp.name || typedName,
+    address: sp.address || '',
+    lat: sp.lat ?? null,
+    lng: sp.lng ?? null,
+    placeId: sp.placeId || '',
+    hours: sp.hours || '',
     arriveTime: $('#place-arrive-input').value || '',
     departTime: $('#place-depart-input').value || '',
     memo: $('#place-memo-input').value || '',
