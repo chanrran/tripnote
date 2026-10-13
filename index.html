@@ -64,7 +64,7 @@ button { cursor: pointer; }
 @media (max-width: 1024px) {
   /* 모바일: 상단 = ☰ + 현재 여행 제목, 하단 = 일정. 여행 목록은 ☰ 서랍 */
   #app { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr); }
-  #sidebar, #aside { display: none; }
+  #sidebar:not(.open), #aside { display: none !important; }
   #sidebar.open { display: flex; position: fixed; top: 0; left: 0; width: 85%; max-width: 320px; height: 100%; z-index: 50; box-shadow: var(--shadow-lg); padding-top: calc(18px + env(safe-area-inset-top, 0px)); }
   #scrim.show { display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 40; }
   #trip-header-desktop { display: none; }
