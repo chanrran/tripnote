@@ -1378,6 +1378,14 @@ const ensureMap = () => {
     fullscreenControl: false,
     gestureHandling: 'greedy',
   });
+  // 지도 생성 직후 영역 크기가 재조정되면 타일이 안 뜨는 Google Maps 특성 → resize 강제 트리거
+  setTimeout(() => {
+    try {
+      const center = state.map.getCenter();
+      google.maps.event.trigger(state.map, 'resize');
+      state.map.setCenter(center);
+    } catch (e) {}
+  }, 300);
 };
 
 const clearMap = () => {
