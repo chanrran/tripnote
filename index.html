@@ -239,6 +239,9 @@ button { cursor: pointer; }
   color: var(--ink-faint);
   margin-top: 4px;
 }
+.export-btns { margin-left: auto; display: inline-flex; gap: 6px; }
+.export-btn { font-size: 11px; padding: 3px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink-soft); }
+.export-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .trip-meta .cost-sum {
   color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
@@ -1350,6 +1353,44 @@ const renderTripMeta = () => {
   if (dayPlaces.length > 0) {
     metaEl.appendChild(el('span', {}, `${dayPlaces.length}개 장소`));
   }
+  if (state.places.length > 0) {
+    metaEl.appendChild(el('span', { class: 'export-btns' }, [
+      el('button', { class: 'export-btn', title: '엑셀에서 열 수 있는 CSV로 내려받기', onclick: () => exportTrip('csv') }, '⬇ CSV'),
+      el('button', { class: 'export-btn', title: '백업용 JSON으로 내려받기', onclick: () => exportTrip('json') }, '⬇ JSON'),
+    ]));
+  }
+};
+
+// 여행 내보내기 (CSV: 엑셀/구글시트용, JSON: 백업용)
+const downloadFile = (filename, text, mime) => {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = el('a', { href: url, download: filename });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+const exportTrip = (kind) => {
+  const t = state.currentTrip;
+  if (!t) return;
+  const places = [...state.places].sort((a, b) => (a.day - b.day) || (a.orderNo - b.orderNo));
+  const safeTitle = (t.title || 'trip').replace(/[\\/:*?"<>|]/g, '_');
+  const stamp = todayIso().replace(/-/g, '');
+  if (kind === 'json') {
+    const data = { exportedAt: new Date().toISOString(), trip: { id: t.id, title: t.title, startDate: t.startDate, endDate: t.endDate },
+      places: places.map(({ createdAt, ...rest }) => rest) };
+    downloadFile(`${safeTitle}_${stamp}.json`, JSON.stringify(data, null, 2), 'application/json');
+  } else {
+    const q = (v) => { const x = String(v ?? ''); return /[",\n\r]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
+    const header = ['날짜', 'Day', '순서', '장소명', '주소', '도착', '출발', '이동수단(다음 장소까지)', '비용(원)', '메모', '위도', '경도', '구글맵 링크'];
+    const rows = places.map(p => [
+      t.startDate ? dateForDay(t.startDate, p.day) : '', p.day, p.orderNo, p.name, p.address, p.arriveTime, p.departTime,
+      fmtMode(p.transitMode || 'WALK'), p.cost || '', p.memo, p.lat ?? '', p.lng ?? '',
+      (p.lat != null && p.lng != null) ? `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}` + (p.placeId ? `&query_place_id=${encodeURIComponent(p.placeId)}` : '') : '',
+    ].map(q).join(','));
+    // BOM 포함 → 엑셀에서 한글 깨짐 방지
+    downloadFile(`${safeTitle}_${stamp}.csv`, '\uFEFF' + [header.map(q).join(','), ...rows].join('\r\n'), 'text/csv;charset=utf-8');
+  }
+  toast('내려받았습니다');
 };
 
 const renderPlaces = () => {
