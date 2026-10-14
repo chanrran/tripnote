@@ -1459,7 +1459,6 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
 
   // Chips row
   const chips = [];
-  if (p.hours) chips.push(el('span', { class: 'chip hours' }, '🕐 ' + p.hours));
   if (p.cost) chips.push(el('span', { class: 'chip cost' }, won(p.cost)));
   if (chips.length) card.appendChild(el('div', { class: 'p-row' }, [el('div', { class: 'p-chips' }, chips)]));
 
@@ -1910,9 +1909,6 @@ const showSelectedPlace = (sp) => {
   $('#sp-name-input').value = sp.name || '';
   $('#sp-addr').textContent = sp.address || '';
   $('#sp-coord').textContent = sp.lat && sp.lng ? `${sp.lat.toFixed(5)}, ${sp.lng.toFixed(5)}` : '';
-  if (sp.hours) {
-    $('#sp-addr').textContent += (sp.address ? ' · ' : '') + '🕐 ' + sp.hours;
-  }
   $('#selected-place').hidden = false;
 };
 
