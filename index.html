@@ -360,6 +360,20 @@ button { cursor: pointer; }
   margin-left: 6px;
   font-weight: 600;
 }
+.place .p-grip {
+  width: 24px; height: 28px; margin: -4px 0; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-faint); font-size: 18px; line-height: 1; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.place .p-grip:active { cursor: grabbing; }
+.place.dragging { opacity: 0.3; }
+.place.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.place.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+.drag-ghost {
+  position: fixed; z-index: 200; pointer-events: none; opacity: 0.92; margin: 0;
+  box-shadow: var(--shadow-lg); transform: rotate(1deg);
+}
+.day-tab.drop-target { background: var(--accent-soft); color: var(--accent); border-bottom-color: var(--accent); }
+body.dragging-place, body.dragging-place * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
 .place .p-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .place .p-nav {
   width: 28px; height: 28px; margin: -4px -4px -4px 0;
@@ -1308,6 +1322,8 @@ const renderCurrentTrip = () => {
     ]));
   }
 
+  $$('.day-tab:not(.all-days)', tabsEl).forEach((t, i) => { t.dataset.day = i + 1; });
+
   // Meta: 비용 합계
   renderTripMeta();
   // 중요: 중앙 영역을 Day에 맞게 다시 렌더
@@ -1391,6 +1407,7 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
       openPlaceModal(p);
     }
   });
+  card.dataset.pid = p.id;
   card.appendChild(el('div', { class: 'p-num' }, String(num)));
   const timeTxt = (p.arriveTime || '') + (p.departTime ? ' – ' + p.departTime : '');
   const mapsUrl = (p.lat != null && p.lng != null)
@@ -1402,6 +1419,11 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
     el('div', { class: 'p-name' }, nameChildren),
     el('div', { class: 'p-side' }, [
       el('div', { class: 'p-time' }, timeTxt),
+      el('div', {
+        class: 'p-grip', title: '끌어서 순서/날짜 이동', 'aria-label': '끌어서 이동',
+        onclick: (e) => e.stopPropagation(),
+        onpointerdown: (e) => startPlaceDrag(e, p, card),
+      }, '⠿'),
       el('a', {
         class: 'p-nav', href: mapsUrl, target: '_blank', rel: 'noopener',
         title: '구글맵 길찾기', 'aria-label': '구글맵 길찾기',
@@ -1432,6 +1454,111 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
     const modeChip = `<span class="chip mode-${mode.toLowerCase()}" style="margin-right:4px;">${fmtMode(mode)}</span>`;
     const legEl = el('div', { class: 'travel-leg', html: `${modeChip} 약 ${minutes}분 · ${fmtDistance(dist)}` });
     parent.appendChild(legEl);
+  }
+};
+
+
+// ───────────────────────────────────────
+// 장소 드래그 앤 드롭 (같은 날 순서 변경 / 다른 날짜 탭으로 이동)
+// ───────────────────────────────────────
+const startPlaceDrag = (e, p, card) => {
+  if (e.button !== undefined && e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  const tripId = state.currentTripId;
+  const list = $('#places-list');
+  const rect = card.getBoundingClientRect();
+  const offY = e.clientY - rect.top;
+  const ghost = card.cloneNode(true);
+  ghost.classList.add('drag-ghost');
+  ghost.style.width = rect.width + 'px';
+  ghost.style.left = rect.left + 'px';
+  ghost.style.top = rect.top + 'px';
+  document.body.appendChild(ghost);
+  card.classList.add('dragging');
+  document.body.classList.add('dragging-place');
+
+  let target = null;  // { type:'card', id, after } | { type:'tab', day }
+  let lastY = e.clientY;
+  const clearMarks = () => {
+    $$('.drop-before, .drop-after, .drop-target').forEach(n => n.classList.remove('drop-before', 'drop-after', 'drop-target'));
+  };
+  const update = (x, y) => {
+    lastY = y;
+    ghost.style.top = (y - offY) + 'px';
+    clearMarks(); target = null;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit) return;
+    const tab = hit.closest('.day-tab[data-day]');
+    if (tab) { tab.classList.add('drop-target'); target = { type: 'tab', day: Number(tab.dataset.day) }; return; }
+    const c = hit.closest('.place[data-pid]');
+    if (c && c !== card) {
+      const r = c.getBoundingClientRect();
+      const after = y > r.top + r.height / 2;
+      c.classList.add(after ? 'drop-after' : 'drop-before');
+      target = { type: 'card', id: c.dataset.pid, after };
+    }
+  };
+  const onMove = (ev) => update(ev.clientX, ev.clientY);
+  // 가장자리 자동 스크롤
+  const timer = setInterval(() => {
+    const lr = list.getBoundingClientRect();
+    if (lastY < lr.top + 50) list.scrollTop -= 12;
+    else if (lastY > lr.bottom - 50) list.scrollTop += 12;
+  }, 16);
+  const cleanup = () => {
+    clearInterval(timer);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onCancel);
+    ghost.remove(); card.classList.remove('dragging');
+    document.body.classList.remove('dragging-place');
+    clearMarks();
+  };
+  const onCancel = () => cleanup();
+  const onUp = async () => {
+    const t = target;
+    cleanup();
+    if (!t) return;
+    await movePlace(tripId, p.id, t);
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onCancel);
+};
+
+const movePlace = async (tripId, id, t) => {
+  const moving = state.places.find(x => x.id === id);
+  if (!moving) return;
+  let destDay, destList;
+  const others = (d) => state.places.filter(x => x.day === d && x.id !== id);
+  if (t.type === 'tab') {
+    destDay = t.day;
+    destList = others(destDay).concat(moving);
+  } else {
+    const ref = state.places.find(x => x.id === t.id);
+    if (!ref) return;
+    destDay = ref.day;
+    destList = others(destDay);
+    const idx = destList.findIndex(x => x.id === ref.id);
+    destList.splice(t.after ? idx + 1 : idx, 0, moving);
+  }
+  const srcDay = moving.day;
+  const batch = writeBatch(db);
+  let changed = 0;
+  const apply = (arr, day) => arr.forEach((pl, i) => {
+    if (pl.day !== day || pl.orderNo !== i + 1) {
+      batch.update(doc(db, 'trips', tripId, 'places', pl.id), { day, orderNo: i + 1 });
+      changed++;
+    }
+  });
+  apply(destList, destDay);
+  if (srcDay !== destDay) apply(others(srcDay), srcDay);
+  if (!changed) return;
+  try {
+    await batch.commit();
+    toast(srcDay !== destDay ? `Day ${destDay}(으)로 이동했습니다` : '순서를 변경했습니다');
+  } catch (err) {
+    console.error(err); toast('이동 실패: ' + err.message);
   }
 };
 
