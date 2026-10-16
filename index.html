@@ -1847,14 +1847,29 @@ const escapeHtml = (s) => (s||'').replace(/[&<>"']/g, c =>
 // ───────────────────────────────────────
 // 모달 공통
 // ───────────────────────────────────────
-const openModal = (id) => { $('#' + id).classList.add('show'); };
-const closeModal = (id) => { $('#' + id).classList.remove('show'); };
+// 팝업이 열려 있는 동안 뒤로가기(휴대폰 제스처 포함)는 페이지를 떠나지 않고 팝업만 닫는다.
+const openModal = (id) => {
+  const m = $('#' + id);
+  if (m.classList.contains('show')) return;
+  m.classList.add('show');
+  try { history.pushState({ tnModal: id }, '', location.href); } catch (e) {}
+};
+const closeModal = (id) => {
+  const m = $('#' + id);
+  if (!m.classList.contains('show')) return;
+  m.classList.remove('show');
+  // 팝업을 버튼으로 닫은 경우, 열 때 쌓은 기록 한 칸을 되돌려 정리
+  if (history.state && history.state.tnModal === id) { try { history.back(); } catch (e) {} }
+};
+window.addEventListener('popstate', () => {
+  $$('.modal-scrim.show').forEach(m => m.classList.remove('show'));
+});
 document.addEventListener('click', (e) => {
   const close = e.target.dataset?.close;
   if (close) closeModal(close);
   // scrim 클릭하면 닫기 (modal 자체 클릭은 제외)
   if (e.target.classList.contains('modal-scrim')) {
-    e.target.classList.remove('show');
+    closeModal(e.target.id);
   }
 });
 
@@ -2227,7 +2242,7 @@ const updateUrl = () => {
   if (state.currentTripId) params.set('trip', state.currentTripId);
   if (state.currentDay && state.currentDay !== 1) params.set('day', state.currentDay);
   const q = params.toString();
-  history.replaceState(null, '', q ? '?' + q : location.pathname);
+  history.replaceState(history.state, '', q ? '?' + q : location.pathname);
 };
 const readUrl = () => {
   const p = new URLSearchParams(location.search);
