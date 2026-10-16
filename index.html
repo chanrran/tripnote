@@ -369,6 +369,7 @@ button { cursor: pointer; }
 }
 .place .p-grip:active { cursor: grabbing; }
 .place.dragging { opacity: 0.3; }
+.place.focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .place.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
 .place.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
 .drag-ghost {
@@ -1452,11 +1453,12 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
   const card = el('div', {
     class: 'place' + (isNowFlag ? ' now' : ''),
     onclick: (ev) => {
-      // action 버튼이면 무시
-      if (ev.target.closest('.place-action')) return;
-      openPlaceModal(p);
+      // 버튼(길찾기/수정/삭제)·끌기 핸들이면 무시. 카드 본문 클릭 = 지도에서 해당 장소 보기
+      if (ev.target.closest('.p-btn, .p-grip')) return;
+      focusPlaceOnMap(p);
     }
   });
+  if (p.id === state.focusedPlaceId) card.classList.add('focused');
   card.dataset.pid = p.id;
   card.appendChild(el('div', { class: 'p-num' }, String(num)));
   const timeTxt = (p.arriveTime || '') + (p.departTime ? ' – ' + p.departTime : '');
@@ -1668,6 +1670,37 @@ const clearMap = () => {
   state.polylines = [];
 };
 
+// 카드 ↔ 지도 연동: 카드를 누르면 해당 장소로 지도 이동 + 강조
+const highlightFocus = () => {
+  $$('.place.focused').forEach(n => n.classList.remove('focused'));
+  if (state.focusedPlaceId) {
+    const c = $(`.place[data-pid="${state.focusedPlaceId}"]`);
+    if (c) c.classList.add('focused');
+  }
+  state.markers.forEach(m => {
+    const on = m.__pid === state.focusedPlaceId;
+    const ic = m.getIcon();
+    if (ic) m.setIcon({ ...ic, scale: on ? 18 : 14, fillColor: on ? '#d9822b' : '#1f4b8e' });
+    m.setZIndex(on ? 999 : null);
+  });
+};
+const focusPlaceOnMap = (p, fromMarker) => {
+  if (p.lat == null || p.lng == null) { toast('이 장소는 지도 좌표가 없어 지도에 표시할 수 없습니다'); return; }
+  state.focusedPlaceId = p.id;
+  if (!state.map) ensureMap();
+  if (!state.map) return;
+  const m = state.markers.find(x => x.__pid === p.id);
+  if (state.openInfo) state.openInfo.close();
+  if (!fromMarker) {
+    state.map.panTo({ lat: p.lat, lng: p.lng });
+    if ((state.map.getZoom() || 0) < 16) state.map.setZoom(16);
+  }
+  if (m && m.__info) { m.__info.open(state.map, m); state.openInfo = m.__info; }
+  highlightFocus();
+  // 마커 클릭 시에는 해당 카드가 보이도록 목록 스크롤
+  if (fromMarker) { const c = $(`.place[data-pid="${p.id}"]`); if (c) c.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+};
+
 const renderMap = () => {
   if (!state.map) return;
   clearMap();
@@ -1720,7 +1753,8 @@ const renderMap = () => {
           </div>
         </div>`
       });
-      marker.addListener('click', () => info.open(state.map, marker));
+      marker.__pid = p.id; marker.__info = info;
+      marker.addListener('click', () => focusPlaceOnMap(p, true));
       state.markers.push(marker);
     });
 
@@ -1743,6 +1777,7 @@ const renderMap = () => {
   });
 
   fitMapBounds(false);
+  highlightFocus();
 
   // Legend
   const totalDist = placesWithCoord.reduce((s, p, i) => {
