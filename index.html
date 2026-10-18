@@ -1915,21 +1915,16 @@ const renderChecklistBody = () => {
     return { group, collapsed };
   };
 
-  // 완료 항목은 맨 위
-  const doneItems = state.checklist.filter(i => i.done);
-  if (doneItems.length && !state.checkHideDone) {
-    const { group, collapsed } = mkGroup(DONE_KEY, '✓ 완료', `${doneItems.length}`, 'done-group');
-    if (!collapsed) doneItems.forEach(it => group.appendChild(buildCheckItem(it, true)));
-  }
-
   checkCats().forEach(cat => {
     const all = state.checklist.filter(i => (i.category || '기타') === cat);
     const todo = all.filter(i => !i.done);
     if (state.checkHideDone && !todo.length) return;
     const { group, collapsed } = mkGroup(cat, cat, `${all.length - todo.length}/${all.length}`, '');
     if (collapsed) return;
-    todo.forEach(it => group.appendChild(buildCheckItem(it, false)));
-    if (!todo.length) group.appendChild(el('div', { class: 'c-empty' }, all.length ? '남은 항목이 없습니다' : '항목 없음 — 다른 분류에서 끌어 오거나 위에서 추가하세요'));
+    // 완료 항목을 해당 분류의 맨 위로
+    const shown = state.checkHideDone ? todo : [...all.filter(i => i.done), ...todo];
+    shown.forEach(it => group.appendChild(buildCheckItem(it, false)));
+    if (!shown.length) group.appendChild(el('div', { class: 'c-empty' }, '항목 없음 — 다른 분류에서 끌어 오거나 위에서 추가하세요'));
   });
   if (!t && !checkCats().length) return;
 };
