@@ -873,15 +873,16 @@ body.resizing #map-desktop { pointer-events: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* 지도 info window 커스텀 */
-.gm-style .gm-style-iw-c { padding: 0 !important; }
+.gm-style .gm-style-iw-c { padding: 0 !important; background: #fff !important; }
+.gm-style .gm-style-iw-d { background: #fff; }
 .iw-content {
   padding: 10px 14px;
   min-width: 160px;
 }
-.iw-content .iw-name { font-weight: 500; font-size: 13px; color: var(--ink); }
-.iw-content .iw-time { font-size: 11px; color: var(--ink-faint); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.iw-content .iw-name { font-weight: 500; font-size: 13px; color: #1c1b19; }
+.iw-content .iw-time { font-size: 11px; color: #6b665d; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .iw-content .iw-actions { margin-top: 8px; display: flex; gap: 6px; }
-.iw-content .iw-actions a { font-size: 11px; color: var(--accent); text-decoration: none; }
+.iw-content .iw-actions a { font-size: 11px; color: #1f4b8e; text-decoration: none; }
 
 /* Google Places Autocomplete 커스텀 */
 .pac-container {
