@@ -2831,9 +2831,8 @@ const readUrl = () => {
     if (!dragging) return;
     dragging = false; bar.classList.remove('dragging'); document.body.classList.remove('resizing-v');
     try { localStorage.setItem('tripnote.mapH', parseInt(wrap.getBoundingClientRect().height)); } catch (e) {}
-    refresh(); if (state.map) fitMapBoundsSafe();
+    refresh();
   };
-  const fitMapBoundsSafe = () => { try { fitMapBounds(false); } catch (e) {} };
   bar.addEventListener('pointerup', end);
   bar.addEventListener('pointercancel', end);
   window.addEventListener('resize', () => { const h = parseInt(getComputedStyle(root).getPropertyValue('--map-h')); if (h) apply(h); });
