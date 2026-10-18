@@ -418,6 +418,14 @@ body.view-check .fab, body.view-check #btn-add-place-header { display: none !imp
   width: 24px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
   color: var(--ink-faint); font-size: 18px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
 }
+.c-group-head .c-cat-edit { width: 24px; height: 24px; padding: 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink-soft); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.c-group-head .c-cat-edit:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.c-group-head .c-cat-edit svg { width: 13px; height: 13px; }
+.c-group.done-group .c-group-head .c-cat { color: var(--sage); }
+.c-tag { font-size: 10px; color: var(--ink-soft); background: var(--rule-soft); border-radius: 4px; padding: 1px 5px; margin-right: 6px; vertical-align: 1px; }
+.c-empty { font-size: 12px; color: var(--ink-faint); padding: 6px 10px 10px; }
+.check-add select.field-input { width: 96px; flex-shrink: 0; }
+.check-addcat { flex-shrink: 0; }
 .c-item.dragging { opacity: .3; }
 .c-item.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
 .c-item.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
@@ -1087,7 +1095,7 @@ body.resizing #map-desktop { pointer-events: none; }
       </div>
       <div class="field">
         <label class="field-label">분류</label>
-        <input type="text" class="field-input" id="check-cat-edit" list="check-cats" autocomplete="off" maxlength="12">
+        <select class="field-input" id="check-cat-edit"></select>
       </div>
       <div class="field">
         <label class="field-label">메모</label>
@@ -1098,6 +1106,34 @@ body.resizing #map-desktop { pointer-events: none; }
       <button class="btn btn-danger" id="btn-delete-check" style="margin-right:auto;">삭제</button>
       <button class="btn btn-ghost" data-close="modal-check">취소</button>
       <button class="btn btn-primary" id="btn-save-check">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 분류 추가/수정 모달 -->
+<div class="modal-scrim" id="modal-cat">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="modal-title" id="cat-modal-title">분류</h3>
+      <button class="modal-close" data-close="modal-cat">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">분류 이름</label>
+        <input type="text" class="field-input" id="cat-name-edit" autocomplete="off" maxlength="12">
+      </div>
+      <div class="field" id="cat-order-row">
+        <label class="field-label">순서</label>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost" id="btn-cat-up" type="button">▲ 위로</button>
+          <button class="btn btn-ghost" id="btn-cat-down" type="button">▼ 아래로</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" id="btn-delete-cat" style="margin-right:auto;">삭제</button>
+      <button class="btn btn-ghost" data-close="modal-cat">취소</button>
+      <button class="btn btn-primary" id="btn-save-cat">저장</button>
     </div>
   </div>
 </div>
@@ -1170,6 +1206,7 @@ const state = {
   checkCollapsed: {},
   lastCheckCat: '준비물',
   editingCheckId: null,
+  editingCat: null,
 };
 
 // ───────────────────────────────────────
@@ -1760,17 +1797,25 @@ const movePlace = async (tripId, id, t) => {
 // 준비(체크리스트)
 // ───────────────────────────────────────
 const CHECK_DEFAULT_CATS = ['예약', '준비물', '교통·결제', '기타'];
+const DONE_KEY = '__done__';
 const checkCats = () => {
-  const cats = [...CHECK_DEFAULT_CATS];
+  const t = state.currentTrip;
+  const cats = (t && Array.isArray(t.checkCats) && t.checkCats.length) ? [...t.checkCats] : [...CHECK_DEFAULT_CATS];
   state.checklist.forEach(i => { const c = i.category || '기타'; if (!cats.includes(c)) cats.push(c); });
   return cats;
 };
+const saveCats = (cats) => updateDoc(doc(db, 'trips', state.currentTripId), { checkCats: cats });
 const checkCounts = () => ({ t: state.checklist.length, d: state.checklist.filter(i => i.done).length });
 const updateCheckTab = () => {
   const b = $('.check-tab');
   if (!b) return;
   const { t, d } = checkCounts();
   b.textContent = t ? `✓ 준비 ${d}/${t}` : '✓ 준비';
+};
+const fillCatSelect = (sel, cur) => {
+  const cats = checkCats();
+  sel.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  sel.value = cats.includes(cur) ? cur : cats[0];
 };
 
 const buildChecklistShell = (list) => {
@@ -1784,9 +1829,9 @@ const buildChecklistShell = (list) => {
       el('input', { type: 'checkbox', id: 'check-hide-done', onchange: (e) => { state.checkHideDone = e.target.checked; renderChecklistBody(); } }),
       ' 미완만 보기',
     ]),
+    el('button', { class: 'btn btn-ghost check-addcat', type: 'button', onclick: () => openCatModal(null) }, '＋ 분류'),
   ]));
-  const catInput = el('input', { id: 'check-cat-input', class: 'field-input', list: 'check-cats', placeholder: '분류', autocomplete: 'off', maxlength: '12' });
-  catInput.value = state.lastCheckCat;
+  const catSel = el('select', { id: 'check-cat-input', class: 'field-input', onchange: (e) => { state.lastCheckCat = e.target.value; } });
   const textInput = el('input', { id: 'check-text-input', class: 'field-input', placeholder: '준비할 것을 입력하고 Enter', autocomplete: 'off' });
   root.appendChild(el('form', {
     class: 'check-add',
@@ -1794,7 +1839,7 @@ const buildChecklistShell = (list) => {
       e.preventDefault();
       const text = textInput.value.trim();
       if (!text) { textInput.focus(); return; }
-      const category = catInput.value.trim() || '기타';
+      const category = catSel.value || '기타';
       state.lastCheckCat = category;
       const orderNo = state.checklist.reduce((m, i) => Math.max(m, i.orderNo || 0), 0) + 1;
       try {
@@ -1804,11 +1849,11 @@ const buildChecklistShell = (list) => {
         textInput.focus();
       } catch (err) { console.error(err); toast('추가 실패: ' + err.message); }
     },
-  }, [catInput, el('datalist', { id: 'check-cats' }), textInput, el('button', { class: 'btn btn-primary', type: 'submit' }, '추가')]));
+  }, [catSel, textInput, el('button', { class: 'btn btn-primary', type: 'submit' }, '추가')]));
   list.appendChild(root);
 };
 
-const buildCheckItem = (it) => {
+const buildCheckItem = (it, inDone) => {
   const row = el('div', {
     class: 'c-item' + (it.done ? ' done' : ''),
     onclick: (e) => {
@@ -1820,12 +1865,15 @@ const buildCheckItem = (it) => {
   row.dataset.id = it.id;
   row.appendChild(el('div', { class: 'c-box' }, it.done ? '✓' : ''));
   row.appendChild(el('div', { class: 'c-main' }, [
-    el('div', { class: 'c-text' }, it.text || ''),
+    el('div', { class: 'c-text' }, [
+      inDone ? el('span', { class: 'c-tag' }, it.category || '기타') : null,
+      it.text || '',
+    ]),
     it.note ? el('div', { class: 'c-note' }, it.note) : null,
   ]));
   row.appendChild(el('div', { class: 'c-actions' }, [
-    el('div', { class: 'p-grip', title: '끌어서 순서/분류 이동', 'aria-label': '끌어서 이동', onclick: (e) => e.stopPropagation(), onpointerdown: (e) => startCheckDrag(e, it, row) }, '⠿'),
-    el('button', { class: 'p-btn', title: '수정', 'aria-label': '수정', html: ICON.edit, onclick: (e) => { e.stopPropagation(); openCheckModal(it); } }),
+    inDone ? null : el('div', { class: 'p-grip', title: '끌어서 순서/분류 이동', 'aria-label': '끌어서 이동', onclick: (e) => e.stopPropagation(), onpointerdown: (e) => startCheckDrag(e, it, row) }, '⠿'),
+    el('button', { class: 'p-btn', title: '수정·분류 이동', 'aria-label': '수정', html: ICON.edit, onclick: (e) => { e.stopPropagation(); openCheckModal(it); } }),
     el('button', {
       class: 'p-btn p-btn-del', title: '삭제', 'aria-label': '삭제', html: ICON.trash,
       onclick: async (e) => {
@@ -1834,7 +1882,7 @@ const buildCheckItem = (it) => {
         try { await deleteCheckItem(state.currentTripId, it.id); } catch (err) { console.error(err); toast('삭제 실패: ' + err.message); }
       },
     }),
-  ]));
+  ].filter(Boolean)));
   return row;
 };
 
@@ -1844,45 +1892,53 @@ const renderChecklistBody = () => {
   const { t, d } = checkCounts();
   $('#check-count').textContent = t ? `${d}/${t} 완료` : '아직 항목이 없습니다';
   $('#check-bar-fill').style.width = t ? (d / t * 100) + '%' : '0%';
-  $('#check-cats').innerHTML = checkCats().map(c => `<option value="${escapeHtml(c)}"></option>`).join('');
+  const sel = $('#check-cat-input');
+  if (sel) fillCatSelect(sel, state.lastCheckCat);
   let box = $('#check-groups');
   if (!box) { box = el('div', { id: 'check-groups' }); root.appendChild(box); }
   box.innerHTML = '';
-  if (!t) {
-    box.appendChild(el('div', { class: 'empty-state', style: 'padding: 40px 10px;' }, [
-      el('h3', {}, '준비할 것을 적어 보세요'),
-      el('p', {}, '위 입력칸에 분류(예약·준비물 등)와 항목을 쓰고 Enter를 누르면 추가됩니다.\n체크하면 완료로 표시됩니다.'),
-    ]));
-    return;
+
+  const mkGroup = (key, label, count, cls) => {
+    const collapsed = !!state.checkCollapsed[key];
+    const group = el('div', { class: 'c-group' + (cls ? ' ' + cls : '') });
+    const head = el('div', { class: 'c-group-head', onclick: () => { state.checkCollapsed[key] = !collapsed; renderChecklistBody(); } }, [
+      el('span', {}, collapsed ? '▸' : '▾'),
+      el('span', { class: 'c-cat' }, label),
+    ]);
+    if (key !== DONE_KEY) {
+      head.dataset.cat = key;
+      head.appendChild(el('button', { class: 'c-cat-edit', type: 'button', title: '분류 수정·삭제', 'aria-label': '분류 수정', html: ICON.edit, onclick: (e) => { e.stopPropagation(); openCatModal(key); } }));
+    }
+    head.appendChild(el('span', { class: 'c-cat-count' }, count));
+    group.appendChild(head);
+    box.appendChild(group);
+    return { group, collapsed };
+  };
+
+  // 완료 항목은 맨 위
+  const doneItems = state.checklist.filter(i => i.done);
+  if (doneItems.length && !state.checkHideDone) {
+    const { group, collapsed } = mkGroup(DONE_KEY, '✓ 완료', `${doneItems.length}`, 'done-group');
+    if (!collapsed) doneItems.forEach(it => group.appendChild(buildCheckItem(it, true)));
   }
+
   checkCats().forEach(cat => {
     const all = state.checklist.filter(i => (i.category || '기타') === cat);
-    if (!all.length) return;
-    const done = all.filter(i => i.done).length;
-    const items = state.checkHideDone ? all.filter(i => !i.done) : all;
-    if (state.checkHideDone && !items.length) return;
-    const collapsed = !!state.checkCollapsed[cat];
-    const group = el('div', { class: 'c-group' });
-    const head = el('div', {
-      class: 'c-group-head',
-      onclick: () => { state.checkCollapsed[cat] = !collapsed; renderChecklistBody(); },
-    }, [
-      el('span', {}, collapsed ? '▸' : '▾'),
-      el('span', { class: 'c-cat' }, cat),
-      el('span', { class: 'c-cat-count' }, `${done}/${all.length}`),
-    ]);
-    head.dataset.cat = cat;
-    group.appendChild(head);
-    if (!collapsed) items.forEach(it => group.appendChild(buildCheckItem(it)));
-    box.appendChild(group);
+    const todo = all.filter(i => !i.done);
+    if (state.checkHideDone && !todo.length) return;
+    const { group, collapsed } = mkGroup(cat, cat, `${all.length - todo.length}/${all.length}`, '');
+    if (collapsed) return;
+    todo.forEach(it => group.appendChild(buildCheckItem(it, false)));
+    if (!todo.length) group.appendChild(el('div', { class: 'c-empty' }, all.length ? '남은 항목이 없습니다' : '항목 없음 — 다른 분류에서 끌어 오거나 위에서 추가하세요'));
   });
+  if (!t && !checkCats().length) return;
 };
 
-// 수정 모달
+// 항목 수정 모달 (분류 이동 포함)
 const openCheckModal = (it) => {
   state.editingCheckId = it.id;
   $('#check-text-edit').value = it.text || '';
-  $('#check-cat-edit').value = it.category || '기타';
+  fillCatSelect($('#check-cat-edit'), it.category || '기타');
   $('#check-note-edit').value = it.note || '';
   openModal('modal-check');
 };
@@ -1890,11 +1946,11 @@ $('#btn-save-check').onclick = async () => {
   const text = $('#check-text-edit').value.trim();
   if (!text) { toast('항목을 입력하세요'); return; }
   try {
-    await saveCheckItem(state.currentTripId, {
-      id: state.editingCheckId, text,
-      category: $('#check-cat-edit').value.trim() || '기타',
-      note: $('#check-note-edit').value.trim(),
-    });
+    const cat = $('#check-cat-edit').value || '기타';
+    const old = state.checklist.find(x => x.id === state.editingCheckId);
+    const data = { id: state.editingCheckId, text, category: cat, note: $('#check-note-edit').value.trim() };
+    if (old && (old.category || '기타') !== cat) data.orderNo = state.checklist.reduce((m, i) => Math.max(m, i.orderNo || 0), 0) + 1;
+    await saveCheckItem(state.currentTripId, data);
     closeModal('modal-check');
   } catch (err) { console.error(err); toast('저장 실패: ' + err.message); }
 };
@@ -1903,6 +1959,72 @@ $('#btn-delete-check').onclick = async () => {
   try { await deleteCheckItem(state.currentTripId, state.editingCheckId); closeModal('modal-check'); }
   catch (err) { console.error(err); toast('삭제 실패: ' + err.message); }
 };
+
+// 분류 추가/수정/삭제/순서
+const openCatModal = (cat) => {
+  state.editingCat = cat;
+  $('#cat-modal-title').textContent = cat ? '분류 수정' : '분류 추가';
+  $('#cat-name-edit').value = cat || '';
+  $('#btn-delete-cat').style.display = cat ? '' : 'none';
+  $('#cat-order-row').style.display = cat ? '' : 'none';
+  openModal('modal-cat');
+  setTimeout(() => $('#cat-name-edit').focus(), 50);
+};
+$('#btn-save-cat').onclick = async () => {
+  const name = $('#cat-name-edit').value.trim();
+  if (!name) { toast('분류 이름을 입력하세요'); return; }
+  const cats = checkCats();
+  const old = state.editingCat;
+  if (name === old) { closeModal('modal-cat'); return; }
+  if (cats.includes(name)) { toast('이미 있는 분류입니다'); return; }
+  try {
+    if (!old) {
+      await saveCats([...cats, name]);
+      state.lastCheckCat = name;
+    } else {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'trips', state.currentTripId), { checkCats: cats.map(c => c === old ? name : c) });
+      state.checklist.filter(i => (i.category || '기타') === old)
+        .forEach(i => batch.update(doc(db, 'trips', state.currentTripId, 'checklist', i.id), { category: name }));
+      await batch.commit();
+      if (state.lastCheckCat === old) state.lastCheckCat = name;
+      if (state.checkCollapsed[old] !== undefined) { state.checkCollapsed[name] = state.checkCollapsed[old]; delete state.checkCollapsed[old]; }
+    }
+    closeModal('modal-cat');
+  } catch (err) { console.error(err); toast('저장 실패: ' + err.message); }
+};
+$('#cat-name-edit').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#btn-save-cat').click(); } });
+$('#btn-delete-cat').onclick = async () => {
+  const old = state.editingCat;
+  const cats = checkCats();
+  if (!old) return;
+  if (cats.length <= 1) { toast('분류는 최소 1개가 필요합니다'); return; }
+  const rest = cats.filter(c => c !== old);
+  const fallback = rest.includes('기타') ? '기타' : rest[0];
+  const items = state.checklist.filter(i => (i.category || '기타') === old);
+  const msg = items.length
+    ? `"${old}" 분류를 삭제하시겠습니까?\n안의 항목 ${items.length}개는 "${fallback}"(으)로 이동됩니다.`
+    : `"${old}" 분류를 삭제하시겠습니까?`;
+  if (!confirm(msg)) return;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'trips', state.currentTripId), { checkCats: rest });
+    items.forEach(i => batch.update(doc(db, 'trips', state.currentTripId, 'checklist', i.id), { category: fallback }));
+    await batch.commit();
+    if (state.lastCheckCat === old) state.lastCheckCat = fallback;
+    closeModal('modal-cat');
+  } catch (err) { console.error(err); toast('삭제 실패: ' + err.message); }
+};
+const moveCat = async (dir) => {
+  const old = state.editingCat;
+  const cats = checkCats();
+  const i = cats.indexOf(old), j = i + dir;
+  if (i < 0 || j < 0 || j >= cats.length) return;
+  [cats[i], cats[j]] = [cats[j], cats[i]];
+  try { await saveCats(cats); closeModal('modal-cat'); } catch (err) { console.error(err); toast('이동 실패: ' + err.message); }
+};
+$('#btn-cat-up').onclick = () => moveCat(-1);
+$('#btn-cat-down').onclick = () => moveCat(1);
 
 // 드래그로 순서/분류 이동
 const startCheckDrag = (e, it, row) => {
@@ -1929,7 +2051,7 @@ const startCheckDrag = (e, it, row) => {
     const hit = document.elementFromPoint(ev.clientX, ev.clientY);
     if (!hit) return;
     const item = hit.closest('.c-item[data-id]');
-    if (item && item !== row) {
+    if (item && item !== row && !item.closest('.done-group')) {
       const r = item.getBoundingClientRect();
       const after = ev.clientY > r.top + r.height / 2;
       item.classList.add(after ? 'drop-after' : 'drop-before');
