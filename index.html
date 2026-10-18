@@ -368,6 +368,59 @@ button { cursor: pointer; }
   color: var(--ink-faint); font-size: 18px; line-height: 1; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
 }
 .place .p-grip:active { cursor: grabbing; }
+/* ─── 준비(체크리스트) ─────────────────────────── */
+.day-tab.check-tab { margin-left: auto; color: var(--sage); }
+.day-tab.check-tab.active { color: var(--sage); border-bottom-color: var(--sage); font-weight: 500; }
+body.view-check .fab, body.view-check #btn-add-place-header { display: none !important; }
+@media (max-width: 1024px) { body.view-check #map-mobile-wrap { display: none; } }
+#check-root { padding-bottom: 60px; }
+.check-top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.check-progress { flex: 1; min-width: 160px; }
+.check-bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.check-bar-fill { height: 100%; width: 0; background: var(--sage); transition: width .25s; }
+.check-count { font-size: 12px; color: var(--ink-soft); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.check-filter { font-size: 12px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.check-add { display: flex; gap: 6px; margin-bottom: 14px; }
+.check-add #check-cat-input { width: 84px; flex-shrink: 0; }
+.check-add #check-text-input { flex: 1; min-width: 0; }
+.check-add .btn { flex-shrink: 0; }
+.c-group { margin-bottom: 12px; }
+.c-group-head {
+  display: flex; align-items: center; gap: 6px; padding: 6px 2px; cursor: pointer;
+  font-size: 12px; letter-spacing: .06em; color: var(--ink-soft); border-bottom: 1px solid var(--rule); margin-bottom: 6px;
+  user-select: none; -webkit-user-select: none;
+}
+.c-group-head .c-cat { font-weight: 600; color: var(--ink); }
+.c-group-head .c-cat-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.c-group-head.drop-target { background: var(--accent-soft); }
+.c-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 4px; cursor: pointer;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; min-height: 44px;
+}
+.c-item:hover { box-shadow: var(--shadow-sm); }
+.c-box {
+  width: 22px; height: 22px; flex-shrink: 0; border: 2px solid var(--ink-faint); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; line-height: 1; transition: background .15s, border-color .15s;
+}
+.c-item.done .c-box { background: var(--sage); border-color: var(--sage); }
+.c-main { flex: 1; min-width: 0; }
+.c-text { font-size: 14px; line-height: 1.35; word-break: break-word; }
+.c-note { font-size: 11px; color: var(--ink-faint); margin-top: 2px; white-space: pre-wrap; word-break: break-word; }
+.c-item.done .c-text { text-decoration: line-through; color: var(--ink-faint); }
+.c-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.c-item .p-btn {
+  width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink-soft);
+}
+.c-item .p-btn:hover { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.c-item .p-btn-del:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); border-color: var(--danger); }
+.c-item .p-grip {
+  width: 24px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-faint); font-size: 18px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.c-item.dragging { opacity: .3; }
+.c-item.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.c-item.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
 .place.dragging { opacity: 0.3; }
 .place.focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .place.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
@@ -1020,6 +1073,35 @@ body.resizing #map-desktop { pointer-events: none; }
   </div>
 </div>
 
+<!-- 체크리스트 항목 수정 모달 -->
+<div class="modal-scrim" id="modal-check">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="modal-title">준비 항목 수정</h3>
+      <button class="modal-close" data-close="modal-check">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">항목</label>
+        <input type="text" class="field-input" id="check-text-edit" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="field-label">분류</label>
+        <input type="text" class="field-input" id="check-cat-edit" list="check-cats" autocomplete="off" maxlength="12">
+      </div>
+      <div class="field">
+        <label class="field-label">메모</label>
+        <textarea class="field-textarea" id="check-note-edit" placeholder="예약 시간, 전화번호 등"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" id="btn-delete-check" style="margin-right:auto;">삭제</button>
+      <button class="btn btn-ghost" data-close="modal-check">취소</button>
+      <button class="btn btn-primary" id="btn-save-check">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── Firebase & Google Maps 로드 ─── -->
 <script type="module">
 
@@ -1082,6 +1164,12 @@ const state = {
   autocomplete: null,
   tripsUnsub: null,
   placesUnsub: null,
+  checklist: [],
+  checklistUnsub: null,
+  checkHideDone: false,
+  checkCollapsed: {},
+  lastCheckCat: '준비물',
+  editingCheckId: null,
 };
 
 // ───────────────────────────────────────
@@ -1179,7 +1267,29 @@ const subscribeTrips = () => {
   });
 };
 
+const subscribeChecklist = (tripId) => {
+  if (state.checklistUnsub) { state.checklistUnsub(); state.checklistUnsub = null; }
+  state.checklist = [];
+  if (!tripId) { updateCheckTab(); return; }
+  state.checklistUnsub = onSnapshot(collection(db, 'trips', tripId, 'checklist'), (snap) => {
+    state.checklist = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.orderNo || 0) - (b.orderNo || 0));
+    updateCheckTab();
+    if (state.currentDay === -1) renderChecklistBody();
+  }, (err) => console.error('checklist snapshot error', err));
+};
+const saveCheckItem = async (tripId, data) => {
+  const { id, ...rest } = data;
+  if (id) { await updateDoc(doc(db, 'trips', tripId, 'checklist', id), rest); return id; }
+  const newId = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  await setDoc(doc(db, 'trips', tripId, 'checklist', newId), { ...rest, createdAt: serverTimestamp() });
+  return newId;
+};
+const deleteCheckItem = (tripId, id) => deleteDoc(doc(db, 'trips', tripId, 'checklist', id));
+
 const subscribePlaces = (tripId) => {
+  subscribeChecklist(tripId);
   if (state.placesUnsub) state.placesUnsub();
   if (!tripId) {
     state.places = [];
@@ -1215,6 +1325,8 @@ const deleteTrip = async (id) => {
   const placesSnap = await getDocs(collection(db, 'trips', id, 'places'));
   const batch = writeBatch(db);
   placesSnap.docs.forEach(d => batch.delete(d.ref));
+  const checkSnap = await getDocs(collection(db, 'trips', id, 'checklist'));
+  checkSnap.docs.forEach(d => batch.delete(d.ref));
   batch.delete(doc(db, 'trips', id));
   await batch.commit();
 };
@@ -1329,7 +1441,14 @@ const renderCurrentTrip = () => {
     ]));
   }
 
-  $$('.day-tab:not(.all-days)', tabsEl).forEach((t, i) => { t.dataset.day = i + 1; });
+  // 준비(체크리스트) 탭: 맨 오른쪽
+  tabsEl.appendChild(el('button', {
+    class: 'day-tab check-tab' + (state.currentDay === -1 ? ' active' : ''),
+    onclick: () => { state.currentDay = -1; updateUrl(); renderCurrentTrip(); renderPlaces(); renderMap(); }
+  }, '✓ 준비'));
+  updateCheckTab();
+
+  $$('.day-tab:not(.all-days):not(.check-tab)', tabsEl).forEach((t, i) => { t.dataset.day = i + 1; });
 
   // Meta: 비용 합계
   renderTripMeta();
@@ -1344,7 +1463,7 @@ const renderTripMeta = () => {
   const metaEl = $('#trip-meta');
   metaEl.innerHTML = '';
   if (!state.currentTrip) return;
-  const dayPlaces = state.currentDay === 0
+  const dayPlaces = state.currentDay <= 0
     ? state.places
     : state.places.filter(p => p.day === state.currentDay);
   const total = dayPlaces.reduce((s, p) => s + (Number(p.cost) || 0), 0);
@@ -1378,7 +1497,8 @@ const exportTrip = (kind) => {
   const stamp = todayIso().replace(/-/g, '');
   if (kind === 'json') {
     const data = { exportedAt: new Date().toISOString(), trip: { id: t.id, title: t.title, startDate: t.startDate, endDate: t.endDate },
-      places: places.map(({ createdAt, ...rest }) => rest) };
+      places: places.map(({ createdAt, ...rest }) => rest),
+      checklist: state.checklist.map(({ createdAt, ...rest }) => rest) };
     downloadFile(`${safeTitle}_${stamp}.json`, JSON.stringify(data, null, 2), 'application/json');
   } else {
     const q = (v) => { const x = String(v ?? ''); return /[",\n\r]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
@@ -1396,6 +1516,18 @@ const exportTrip = (kind) => {
 
 const renderPlaces = () => {
   const list = $('#places-list');
+  const wasCheck = document.body.classList.contains('view-check');
+  const isCheck = !!state.currentTrip && state.currentDay === -1;
+  document.body.classList.toggle('view-check', isCheck);
+  if (isCheck) {
+    if (!$('#check-root')) { list.innerHTML = ''; buildChecklistShell(list); }
+    renderChecklistBody();
+    return;
+  }
+  if (wasCheck && state.map && window.google) {
+    // 모바일에서 지도가 숨겨져 있던 뒤 다시 보일 때 크기·범위 재계산
+    setTimeout(() => { google.maps.event.trigger(state.map, 'resize'); fitMapBounds(false); }, 60);
+  }
   list.innerHTML = '';
   if (!state.currentTrip) return;
 
@@ -1623,6 +1755,243 @@ const movePlace = async (tripId, id, t) => {
   }
 };
 
+
+// ───────────────────────────────────────
+// 준비(체크리스트)
+// ───────────────────────────────────────
+const CHECK_DEFAULT_CATS = ['예약', '준비물', '교통·결제', '기타'];
+const checkCats = () => {
+  const cats = [...CHECK_DEFAULT_CATS];
+  state.checklist.forEach(i => { const c = i.category || '기타'; if (!cats.includes(c)) cats.push(c); });
+  return cats;
+};
+const checkCounts = () => ({ t: state.checklist.length, d: state.checklist.filter(i => i.done).length });
+const updateCheckTab = () => {
+  const b = $('.check-tab');
+  if (!b) return;
+  const { t, d } = checkCounts();
+  b.textContent = t ? `✓ 준비 ${d}/${t}` : '✓ 준비';
+};
+
+const buildChecklistShell = (list) => {
+  const root = el('div', { id: 'check-root' });
+  root.appendChild(el('div', { class: 'check-top' }, [
+    el('div', { class: 'check-progress' }, [
+      el('div', { class: 'check-bar' }, [el('div', { id: 'check-bar-fill', class: 'check-bar-fill' })]),
+      el('div', { id: 'check-count', class: 'check-count' }),
+    ]),
+    el('label', { class: 'check-filter' }, [
+      el('input', { type: 'checkbox', id: 'check-hide-done', onchange: (e) => { state.checkHideDone = e.target.checked; renderChecklistBody(); } }),
+      ' 미완만 보기',
+    ]),
+  ]));
+  const catInput = el('input', { id: 'check-cat-input', class: 'field-input', list: 'check-cats', placeholder: '분류', autocomplete: 'off', maxlength: '12' });
+  catInput.value = state.lastCheckCat;
+  const textInput = el('input', { id: 'check-text-input', class: 'field-input', placeholder: '준비할 것을 입력하고 Enter', autocomplete: 'off' });
+  root.appendChild(el('form', {
+    class: 'check-add',
+    onsubmit: async (e) => {
+      e.preventDefault();
+      const text = textInput.value.trim();
+      if (!text) { textInput.focus(); return; }
+      const category = catInput.value.trim() || '기타';
+      state.lastCheckCat = category;
+      const orderNo = state.checklist.reduce((m, i) => Math.max(m, i.orderNo || 0), 0) + 1;
+      try {
+        await saveCheckItem(state.currentTripId, { text, category, note: '', done: false, orderNo });
+        textInput.value = '';
+        state.checkCollapsed[category] = false;
+        textInput.focus();
+      } catch (err) { console.error(err); toast('추가 실패: ' + err.message); }
+    },
+  }, [catInput, el('datalist', { id: 'check-cats' }), textInput, el('button', { class: 'btn btn-primary', type: 'submit' }, '추가')]));
+  list.appendChild(root);
+};
+
+const buildCheckItem = (it) => {
+  const row = el('div', {
+    class: 'c-item' + (it.done ? ' done' : ''),
+    onclick: (e) => {
+      if (e.target.closest('.p-btn, .p-grip')) return;
+      updateDoc(doc(db, 'trips', state.currentTripId, 'checklist', it.id), { done: !it.done })
+        .catch(err => { console.error(err); toast('저장 실패: ' + err.message); });
+    },
+  });
+  row.dataset.id = it.id;
+  row.appendChild(el('div', { class: 'c-box' }, it.done ? '✓' : ''));
+  row.appendChild(el('div', { class: 'c-main' }, [
+    el('div', { class: 'c-text' }, it.text || ''),
+    it.note ? el('div', { class: 'c-note' }, it.note) : null,
+  ]));
+  row.appendChild(el('div', { class: 'c-actions' }, [
+    el('div', { class: 'p-grip', title: '끌어서 순서/분류 이동', 'aria-label': '끌어서 이동', onclick: (e) => e.stopPropagation(), onpointerdown: (e) => startCheckDrag(e, it, row) }, '⠿'),
+    el('button', { class: 'p-btn', title: '수정', 'aria-label': '수정', html: ICON.edit, onclick: (e) => { e.stopPropagation(); openCheckModal(it); } }),
+    el('button', {
+      class: 'p-btn p-btn-del', title: '삭제', 'aria-label': '삭제', html: ICON.trash,
+      onclick: async (e) => {
+        e.stopPropagation();
+        if (!confirm(`"${it.text}" 항목을 삭제하시겠습니까?`)) return;
+        try { await deleteCheckItem(state.currentTripId, it.id); } catch (err) { console.error(err); toast('삭제 실패: ' + err.message); }
+      },
+    }),
+  ]));
+  return row;
+};
+
+const renderChecklistBody = () => {
+  const root = $('#check-root');
+  if (!root) return;
+  const { t, d } = checkCounts();
+  $('#check-count').textContent = t ? `${d}/${t} 완료` : '아직 항목이 없습니다';
+  $('#check-bar-fill').style.width = t ? (d / t * 100) + '%' : '0%';
+  $('#check-cats').innerHTML = checkCats().map(c => `<option value="${escapeHtml(c)}"></option>`).join('');
+  let box = $('#check-groups');
+  if (!box) { box = el('div', { id: 'check-groups' }); root.appendChild(box); }
+  box.innerHTML = '';
+  if (!t) {
+    box.appendChild(el('div', { class: 'empty-state', style: 'padding: 40px 10px;' }, [
+      el('h3', {}, '준비할 것을 적어 보세요'),
+      el('p', {}, '위 입력칸에 분류(예약·준비물 등)와 항목을 쓰고 Enter를 누르면 추가됩니다.\n체크하면 완료로 표시됩니다.'),
+    ]));
+    return;
+  }
+  checkCats().forEach(cat => {
+    const all = state.checklist.filter(i => (i.category || '기타') === cat);
+    if (!all.length) return;
+    const done = all.filter(i => i.done).length;
+    const items = state.checkHideDone ? all.filter(i => !i.done) : all;
+    if (state.checkHideDone && !items.length) return;
+    const collapsed = !!state.checkCollapsed[cat];
+    const group = el('div', { class: 'c-group' });
+    const head = el('div', {
+      class: 'c-group-head',
+      onclick: () => { state.checkCollapsed[cat] = !collapsed; renderChecklistBody(); },
+    }, [
+      el('span', {}, collapsed ? '▸' : '▾'),
+      el('span', { class: 'c-cat' }, cat),
+      el('span', { class: 'c-cat-count' }, `${done}/${all.length}`),
+    ]);
+    head.dataset.cat = cat;
+    group.appendChild(head);
+    if (!collapsed) items.forEach(it => group.appendChild(buildCheckItem(it)));
+    box.appendChild(group);
+  });
+};
+
+// 수정 모달
+const openCheckModal = (it) => {
+  state.editingCheckId = it.id;
+  $('#check-text-edit').value = it.text || '';
+  $('#check-cat-edit').value = it.category || '기타';
+  $('#check-note-edit').value = it.note || '';
+  openModal('modal-check');
+};
+$('#btn-save-check').onclick = async () => {
+  const text = $('#check-text-edit').value.trim();
+  if (!text) { toast('항목을 입력하세요'); return; }
+  try {
+    await saveCheckItem(state.currentTripId, {
+      id: state.editingCheckId, text,
+      category: $('#check-cat-edit').value.trim() || '기타',
+      note: $('#check-note-edit').value.trim(),
+    });
+    closeModal('modal-check');
+  } catch (err) { console.error(err); toast('저장 실패: ' + err.message); }
+};
+$('#btn-delete-check').onclick = async () => {
+  if (!state.editingCheckId || !confirm('이 항목을 삭제하시겠습니까?')) return;
+  try { await deleteCheckItem(state.currentTripId, state.editingCheckId); closeModal('modal-check'); }
+  catch (err) { console.error(err); toast('삭제 실패: ' + err.message); }
+};
+
+// 드래그로 순서/분류 이동
+const startCheckDrag = (e, it, row) => {
+  if (e.button !== undefined && e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  const tripId = state.currentTripId;
+  const list = $('#places-list');
+  const rect = row.getBoundingClientRect();
+  const offY = e.clientY - rect.top;
+  const ghost = row.cloneNode(true);
+  ghost.classList.add('drag-ghost');
+  ghost.style.width = rect.width + 'px';
+  ghost.style.left = rect.left + 'px';
+  ghost.style.top = rect.top + 'px';
+  document.body.appendChild(ghost);
+  row.classList.add('dragging');
+  document.body.classList.add('dragging-place');
+  let target = null, lastY = e.clientY;
+  const clearMarks = () => $$('.drop-before, .drop-after, .drop-target').forEach(n => n.classList.remove('drop-before', 'drop-after', 'drop-target'));
+  const onMove = (ev) => {
+    lastY = ev.clientY;
+    ghost.style.top = (ev.clientY - offY) + 'px';
+    clearMarks(); target = null;
+    const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+    if (!hit) return;
+    const item = hit.closest('.c-item[data-id]');
+    if (item && item !== row) {
+      const r = item.getBoundingClientRect();
+      const after = ev.clientY > r.top + r.height / 2;
+      item.classList.add(after ? 'drop-after' : 'drop-before');
+      target = { type: 'item', id: item.dataset.id, after };
+      return;
+    }
+    const head = hit.closest('.c-group-head[data-cat]');
+    if (head) { head.classList.add('drop-target'); target = { type: 'head', cat: head.dataset.cat }; }
+  };
+  const timer = setInterval(() => {
+    const lr = list.getBoundingClientRect();
+    if (lastY < lr.top + 50) list.scrollTop -= 12;
+    else if (lastY > lr.bottom - 50) list.scrollTop += 12;
+  }, 16);
+  const cleanup = () => {
+    clearInterval(timer);
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', cleanup);
+    ghost.remove(); row.classList.remove('dragging');
+    document.body.classList.remove('dragging-place');
+    clearMarks();
+  };
+  const onUp = async () => {
+    const t = target;
+    cleanup();
+    if (t) await moveCheckItem(tripId, it.id, t);
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', cleanup);
+};
+
+const moveCheckItem = async (tripId, id, t) => {
+  const moving = state.checklist.find(x => x.id === id);
+  if (!moving) return;
+  const cats = checkCats();
+  const groups = {};
+  cats.forEach(c => { groups[c] = []; });
+  state.checklist.filter(x => x.id !== id).forEach(x => groups[x.category || '기타'].push(x));
+  if (t.type === 'head') {
+    groups[t.cat].push(moving);
+  } else {
+    const ref = state.checklist.find(x => x.id === t.id);
+    if (!ref) return;
+    const arr = groups[ref.category || '기타'];
+    const idx = arr.findIndex(x => x.id === ref.id);
+    arr.splice(t.after ? idx + 1 : idx, 0, moving);
+  }
+  const batch = writeBatch(db);
+  let n = 0, i = 0;
+  cats.forEach(c => groups[c].forEach(x => {
+    i++;
+    if (x.orderNo !== i || (x.category || '기타') !== c) {
+      batch.update(doc(db, 'trips', tripId, 'checklist', x.id), { orderNo: i, category: c });
+      n++;
+    }
+  }));
+  if (!n) return;
+  try { await batch.commit(); } catch (err) { console.error(err); toast('이동 실패: ' + err.message); }
+};
+
 // ───────────────────────────────────────
 // Map rendering
 // ───────────────────────────────────────
@@ -1709,7 +2078,7 @@ const renderMap = () => {
     return;
   }
 
-  const toShow = state.currentDay === 0 ? state.places : state.places.filter(p => p.day === state.currentDay);
+  const toShow = state.currentDay <= 0 ? state.places : state.places.filter(p => p.day === state.currentDay);
   const placesWithCoord = toShow.filter(p => p.lat && p.lng);
   if (!placesWithCoord.length) {
     showLegend('장소를 추가하면 지도에 표시됩니다');
@@ -1785,14 +2154,14 @@ const renderMap = () => {
     const prev = placesWithCoord[i-1];
     return s + haversine({lat:prev.lat,lng:prev.lng}, {lat:p.lat,lng:p.lng});
   }, 0);
-  const label = state.currentDay === 0
+  const label = state.currentDay <= 0
     ? `전체 · ${placesWithCoord.length}곳 · ${fmtDistance(totalDist)}`
     : `Day ${state.currentDay} · ${placesWithCoord.length}곳 · ${fmtDistance(totalDist)}`;
   showLegend(label);
 };
 
 const fitMapBounds = (animated) => {
-  const toShow = state.currentDay === 0 ? state.places : state.places.filter(p => p.day === state.currentDay);
+  const toShow = state.currentDay <= 0 ? state.places : state.places.filter(p => p.day === state.currentDay);
   const pts = toShow.filter(p => p.lat && p.lng);
   if (!pts.length || !state.map) return;
   if (pts.length === 1) {
