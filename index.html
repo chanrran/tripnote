@@ -2269,7 +2269,7 @@ const renderMap = () => {
           <div class="iw-time">${p.arriveTime || ''}${p.departTime ? ' – ' + p.departTime : ''}</div>
           ${p.memo && p.memo.trim() ? `<div class="iw-memo">${escapeHtml(p.memo.trim())}</div>` : ''}
           <div class="iw-actions">
-            <a href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank" rel="noopener">🧭 길찾기</a>
+            <a href="https://www.google.com/search?q=${encodeURIComponent([p.name || '', p.address || ''].filter(Boolean).join(' ').trim() || p.name || '')}" target="_blank" rel="noopener">🔍 구글 검색</a>
           </div>
         </div>`
       });
