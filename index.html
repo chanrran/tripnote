@@ -1659,8 +1659,10 @@ const appendPlace = (parent, p, num, next, isNowFlag) => {
   const mapsUrl = (p.lat != null && p.lng != null)
     ? `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}` + (p.placeId ? `&destination_place_id=${encodeURIComponent(p.placeId)}` : '')
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name || '')}`;
-  const searchQuery = [p.name || '', p.address || ''].filter(Boolean).join(' ').trim();
-  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery || p.name || '')}`;
+  const placeQuery = [p.name || '', p.address || ''].filter(Boolean).join(' ').trim() || (p.lat != null && p.lng != null ? `${p.lat},${p.lng}` : '');
+  const searchUrl = p.placeId
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeQuery)}&query_place_id=${encodeURIComponent(p.placeId)}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeQuery)}`;
   const nameChildren = [p.name || '(장소 미지정)'];
   if (isNowFlag) nameChildren.push(el('span', { class: 'now-badge' }, '지금'));
   card.appendChild(el('div', { class: 'p-head' }, [
@@ -2269,7 +2271,9 @@ const renderMap = () => {
           <div class="iw-time">${p.arriveTime || ''}${p.departTime ? ' – ' + p.departTime : ''}</div>
           ${p.memo && p.memo.trim() ? `<div class="iw-memo">${escapeHtml(p.memo.trim())}</div>` : ''}
           <div class="iw-actions">
-            <a href="https://www.google.com/search?q=${encodeURIComponent([p.name || '', p.address || ''].filter(Boolean).join(' ').trim() || p.name || '')}" target="_blank" rel="noopener">🔍 구글 검색</a>
+            <a href="${p.placeId
+              ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.name || '', p.address || ''].filter(Boolean).join(' ').trim() || `${p.lat},${p.lng}`)}&query_place_id=${encodeURIComponent(p.placeId)}`
+              : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([p.name || '', p.address || ''].filter(Boolean).join(' ').trim() || `${p.lat},${p.lng}`)}`}" target="_blank" rel="noopener">📍 구글 맵에서 보기</a>
           </div>
         </div>`
       });
