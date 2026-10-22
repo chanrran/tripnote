@@ -499,6 +499,40 @@ body.dragging-place, body.dragging-place * { cursor: grabbing !important; user-s
 .chip.mode-drive { background: color-mix(in srgb, var(--warm) 20%, transparent); color: var(--warm); }
 .chip.mode-flight { background: color-mix(in srgb, var(--marker) 20%, transparent); color: var(--marker); }
 
+/* 날씨 칩 */
+.day-weather {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-style: normal;
+}
+.day-weather.loading { opacity: 0.5; }
+.day-weather-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  margin: 0 0 10px 0;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.day-weather-bar .w-icon { font-size: 18px; }
+.day-weather-bar .w-temp { font-weight: 600; font-variant-numeric: tabular-nums; }
+.day-weather-bar .w-label { color: var(--ink-soft); }
+.day-weather-bar .w-rain { margin-left: auto; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.day-weather-bar .w-src { font-size: 10px; color: var(--ink-faint); }
+
 .place-actions {
   display: flex;
   gap: 6px;
@@ -1231,6 +1265,8 @@ const state = {
   lastCheckCat: '준비물',
   editingCheckId: null,
   editingCat: null,
+  weatherCache: {},         // { "lat,lng": { "YYYY-MM-DD": {code,tmax,tmin,pop,rain} } }
+  weatherFetchedFor: null,  // trip id that weather has been fetched for
 };
 
 // ───────────────────────────────────────
@@ -1305,6 +1341,130 @@ const fmtMode = (mode) => ({WALK:'도보', TRANSIT:'대중교통', DRIVE:'차', 
 const won = (n) => (n == null || n === '') ? '' : `${Number(n).toLocaleString('ko-KR')}원`;
 
 // ───────────────────────────────────────
+// Weather (Open-Meteo, JMA data for Japan)
+// ───────────────────────────────────────
+const WEATHER_ICONS = {
+  0:'☀️', 1:'🌤️', 2:'⛅', 3:'☁️',
+  45:'🌫️', 48:'🌫️',
+  51:'🌦️', 53:'🌦️', 55:'🌦️', 56:'🌦️', 57:'🌦️',
+  61:'🌧️', 63:'🌧️', 65:'🌧️', 66:'🌧️', 67:'🌧️',
+  71:'🌨️', 73:'🌨️', 75:'🌨️', 77:'🌨️',
+  80:'🌦️', 81:'🌧️', 82:'🌧️',
+  85:'🌨️', 86:'🌨️',
+  95:'⛈️', 96:'⛈️', 99:'⛈️',
+};
+const WEATHER_LABELS = {
+  0:'맑음', 1:'대체로 맑음', 2:'구름 조금', 3:'흐림',
+  45:'안개', 48:'안개',
+  51:'약한 이슬비', 53:'이슬비', 55:'강한 이슬비', 56:'어는 이슬비', 57:'어는 이슬비',
+  61:'약한 비', 63:'비', 65:'강한 비', 66:'어는 비', 67:'어는 비',
+  71:'약한 눈', 73:'눈', 75:'강한 눈', 77:'싸락눈',
+  80:'소나기', 81:'소나기', 82:'강한 소나기',
+  85:'눈 소나기', 86:'강한 눈 소나기',
+  95:'뇌우', 96:'뇌우', 99:'강한 뇌우',
+};
+
+const getDayLocation = (day) => {
+  const places = state.places.filter(p => p.day === day && typeof p.lat === 'number' && typeof p.lng === 'number');
+  if (!places.length) return null;
+  const lats = places.map(p => p.lat).sort((a,b) => a-b);
+  const lngs = places.map(p => p.lng).sort((a,b) => a-b);
+  return { lat: lats[Math.floor(lats.length/2)], lng: lngs[Math.floor(lngs.length/2)] };
+};
+
+const fetchWeatherAt = async (lat, lng) => {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  if (state.weatherCache[key]) return false;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&timezone=Asia%2FTokyo&forecast_days=16`;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('weather fetch failed: ' + resp.status);
+    const data = await resp.json();
+    const d = data.daily || {};
+    const byDate = {};
+    for (let i = 0; i < (d.time || []).length; i++) {
+      byDate[d.time[i]] = {
+        code: d.weather_code[i],
+        tmax: d.temperature_2m_max[i],
+        tmin: d.temperature_2m_min[i],
+        pop: d.precipitation_probability_max[i],
+        rain: d.precipitation_sum[i],
+      };
+    }
+    state.weatherCache[key] = byDate;
+    return true;
+  } catch (err) {
+    console.warn('weather fetch failed', err);
+    return false;
+  }
+};
+
+const fetchWeatherForTrip = async (trip) => {
+  if (!trip || !trip.startDate || !trip.endDate) return;
+  if (state.weatherFetchedFor === trip.id) return;
+  state.weatherFetchedFor = trip.id;
+  const totalDays = daysBetween(trip.startDate, trip.endDate);
+  const keys = new Set();
+  for (let d = 1; d <= totalDays; d++) {
+    const loc = getDayLocation(d);
+    if (loc) keys.add(`${loc.lat.toFixed(2)},${loc.lng.toFixed(2)}`);
+  }
+  if (!keys.size) keys.add('34.99,135.76'); // Kyoto fallback
+  const changed = (await Promise.all([...keys].map(k => {
+    const [lat, lng] = k.split(',').map(Number);
+    return fetchWeatherAt(lat, lng);
+  }))).some(Boolean);
+  if (changed) renderPlaces();
+};
+
+const getWeatherForDay = (day) => {
+  const t = state.currentTrip;
+  if (!t || !t.startDate) return null;
+  const dateIso = dateForDay(t.startDate, day);
+  const loc = getDayLocation(day);
+  if (!loc) {
+    // fallback: try any cached location
+    const anyKey = Object.keys(state.weatherCache)[0];
+    if (!anyKey) return null;
+    return state.weatherCache[anyKey][dateIso] || null;
+  }
+  const key = `${loc.lat.toFixed(2)},${loc.lng.toFixed(2)}`;
+  const bucket = state.weatherCache[key];
+  if (!bucket) return null;
+  return bucket[dateIso] || null;
+};
+
+const makeWeatherChip = (day) => {
+  const w = getWeatherForDay(day);
+  if (!w) return null;
+  const icon = WEATHER_ICONS[w.code] || '🌡️';
+  const temp = `${Math.round(w.tmax)}°/${Math.round(w.tmin)}°`;
+  const pop = w.pop != null ? ` · ☔${w.pop}%` : '';
+  const label = WEATHER_LABELS[w.code] || '';
+  return el('span', {
+    class: 'day-weather',
+    title: `${label}, 강수량 ${w.rain || 0}mm`
+  }, `${icon} ${temp}${pop}`);
+};
+
+const makeWeatherBar = (day) => {
+  const w = getWeatherForDay(day);
+  if (!w) return null;
+  const icon = WEATHER_ICONS[w.code] || '🌡️';
+  const label = WEATHER_LABELS[w.code] || '';
+  const temp = `${Math.round(w.tmax)}° / ${Math.round(w.tmin)}°`;
+  const popStr = w.pop != null ? `☔ ${w.pop}%` : '';
+  const rainStr = (w.rain != null && w.rain > 0) ? ` · ${w.rain}mm` : '';
+  return el('div', { class: 'day-weather-bar' }, [
+    el('span', { class: 'w-icon' }, icon),
+    el('span', { class: 'w-temp' }, temp),
+    el('span', { class: 'w-label' }, label),
+    el('span', { class: 'w-rain' }, popStr + rainStr),
+    el('span', { class: 'w-src', title: '날씨: Open-Meteo (JMA 데이터)' }, '· Open-Meteo'),
+  ]);
+};
+
+// ───────────────────────────────────────
 // Firestore CRUD
 // ───────────────────────────────────────
 const subscribeTrips = () => {
@@ -1365,6 +1525,8 @@ const subscribePlaces = (tripId) => {
       .sort((a, b) => (a.day - b.day) || (a.orderNo - b.orderNo));
     renderPlaces();
     renderMap();
+    // 장소 좌표를 바탕으로 날씨 fetch (한 여행당 1회)
+    fetchWeatherForTrip(state.currentTrip);
   }, (err) => {
     console.error('places snapshot error', err);
   });
@@ -1611,14 +1773,24 @@ const renderPlaces = () => {
   const nowTime = new Date().toTimeString().slice(0, 5);
   const isToday = state.currentTrip.startDate && (dateForDay(state.currentTrip.startDate, state.currentDay) === nowDate);
 
+  // 특정 날짜 뷰: 상단에 날씨 바
+  if (state.currentDay > 0) {
+    const bar = makeWeatherBar(state.currentDay);
+    if (bar) list.appendChild(bar);
+  }
+
   // All days 뷰에서는 day별로 그루핑
   if (state.currentDay === 0) {
     const byDay = {};
     dayPlaces.forEach(p => { (byDay[p.day] = byDay[p.day] || []).push(p); });
     Object.keys(byDay).sort((a,b) => a-b).forEach(d => {
-      timeline.appendChild(el('div', {
-        style: 'font-family: Fraunces, serif; font-style: italic; color: var(--ink-faint); margin: 12px 0 6px; margin-left: -18px;'
-      }, `Day ${d}`));
+      const dNum = Number(d);
+      const heading = el('div', {
+        style: 'font-family: Fraunces, serif; font-style: italic; color: var(--ink-faint); margin: 12px 0 6px; margin-left: -18px; display: flex; align-items: center;'
+      }, [`Day ${d}`]);
+      const chip = makeWeatherChip(dNum);
+      if (chip) heading.appendChild(chip);
+      timeline.appendChild(heading);
       byDay[d].forEach((p, i) => appendPlace(timeline, p, i + 1, byDay[d][i+1], false));
     });
   } else {
@@ -2754,6 +2926,7 @@ const selectTrip = (id) => {
   state.currentTripId = id;
   state.currentTrip = state.trips.find(t => t.id === id) || null;
   state.currentDay = 1;
+  state.weatherFetchedFor = null; // 여행 변경 시 날씨 재조회
   renderTripsList();
   renderCurrentTrip();
   subscribePlaces(id);
