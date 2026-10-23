@@ -878,7 +878,7 @@ body.resizing #map-desktop { pointer-events: none; }
   display: flex;
   gap: 6px;
 }
-.mode-opt {
+.mode-opt, .cat-opt {
   flex: 1;
   padding: 8px;
   background: var(--paper);
@@ -891,7 +891,7 @@ body.resizing #map-desktop { pointer-events: none; }
   justify-content: center;
   gap: 4px;
 }
-.mode-opt.active {
+.mode-opt.active, .cat-opt.active {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
@@ -1125,6 +1125,15 @@ body.resizing #map-desktop { pointer-events: none; }
       <div style="font-size:11px; color:var(--ink-faint); margin:-6px 0 14px; line-height:1.5;">
         💡 머무는 시간은 "여기 도착~여기서 출발"로 입력하세요.<br>
         비행기 등 이동은 <b>출발지</b>(예: 김포공항)와 <b>도착지</b>(예: 간사이공항)를 각각 장소로 추가하세요.
+      </div>
+
+      <div class="field">
+        <label class="field-label">구분</label>
+        <div class="mode-picker" id="cat-picker">
+          <button type="button" class="cat-opt active" data-cat="route">🧭 공식 경로</button>
+          <button type="button" class="cat-opt" data-cat="recommendation">📌 추천 장소 (경로 제외)</button>
+        </div>
+        <div style="font-size:11px; color:var(--ink-faint); margin-top:4px;">추천 장소는 번호·경로 연결 없이 목록 하단 "근처 추천"에 모이고, 지도에는 보라색 별 핀으로 표시됩니다.</div>
       </div>
 
       <div class="field">
@@ -2726,6 +2735,8 @@ const openPlaceModal = (place) => {
   $('#place-memo-input').value = place?.memo || '';
   state.selectedMode = place?.transitMode || 'WALK';
   updateModePicker();
+  state.selectedCat = isRec(place) ? 'recommendation' : 'route';
+  updateCatPicker();
 
   if (place) {
     state.selectedPlace = {
@@ -2938,6 +2949,16 @@ $('#mode-picker').addEventListener('click', (e) => {
   state.selectedMode = btn.dataset.mode;
   updateModePicker();
 });
+// 구분(공식 경로 / 추천 장소) 선택
+$('#cat-picker').addEventListener('click', (e) => {
+  const btn = e.target.closest('.cat-opt');
+  if (!btn) return;
+  state.selectedCat = btn.dataset.cat;
+  updateCatPicker();
+});
+const updateCatPicker = () => {
+  $$('.cat-opt', $('#cat-picker')).forEach(b => b.classList.toggle('active', b.dataset.cat === (state.selectedCat || 'route')));
+};
 const updateModePicker = () => {
   $$('.mode-opt', $('#mode-picker')).forEach(b => {
     b.classList.toggle('active', b.dataset.mode === state.selectedMode);
@@ -2971,11 +2992,18 @@ $('#btn-save-place').onclick = async () => {
     memo: $('#place-memo-input').value || '',
     transitMode: state.selectedMode,
     cost: Number($('#place-cost-input').value) || 0,
+    category: state.selectedCat === 'recommendation' ? 'recommendation' : 'route',
   };
-  // 새 장소의 orderNo = 그 Day의 마지막 + 1
+  // 수정 시에는 원래 Day 유지 (전체 보기에서 수정해도 Day 1로 바뀌지 않도록)
+  const editing = state.editingPlaceId ? state.places.find(p => p.id === state.editingPlaceId) : null;
+  if (editing) data.day = editing.day;
+  // 새 장소의 orderNo = 그 Day의 마지막 + 1 (추천 장소는 번호를 쓰지 않으므로 경로 장소만 센다)
   if (!state.editingPlaceId) {
     const siblings = state.places.filter(p => !isRec(p) && p.day === data.day);
     data.orderNo = siblings.length + 1;
+  } else if (editing && isRec(editing) !== (data.category === 'recommendation')) {
+    // 구분을 바꾸면 경로 쪽 마지막 순서로 보냄
+    data.orderNo = state.places.filter(p => !isRec(p) && p.day === data.day && p.id !== editing.id).length + 1;
   }
   try {
     await savePlace(state.currentTripId, {
