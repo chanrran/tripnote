@@ -462,6 +462,22 @@ body.dragging-place, body.dragging-place * { cursor: grabbing !important; user-s
   color: var(--ink-faint);
   margin-top: 2px;
 }
+/* 경로 밖 추천 장소 (동선·번호·정렬 제외) */
+.rec-section { margin: 16px 0 8px; border: 1px dashed var(--rule); border-radius: 8px; background: var(--paper); }
+.rec-section > summary { cursor: pointer; padding: 10px 12px; font-size: 13px; font-weight: 600; color: #7b4bb0; list-style: none; }
+.rec-section > summary::-webkit-details-marker { display: none; }
+.rec-section > summary::before { content: '▸ '; }
+.rec-section[open] > summary::before { content: '▾ '; }
+.rec-section .rec-hint { font-size: 11px; color: var(--ink-faint); padding: 0 12px 6px; }
+.rec-day { font-size: 11px; color: var(--ink-faint); padding: 6px 12px 2px; font-style: italic; }
+.rec-item { margin: 0 8px 8px; padding: 8px 10px; border: 1px solid var(--rule-soft); border-left: 3px solid #7b4bb0; border-radius: 6px; cursor: pointer; }
+.rec-item.focused { border-color: #7b4bb0; box-shadow: 0 0 0 2px color-mix(in srgb, #7b4bb0 18%, transparent); }
+.rec-item .r-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rec-item .r-name { font-size: 13px; font-weight: 600; }
+.rec-item .r-side { display: flex; gap: 4px; flex-shrink: 0; }
+.rec-item .r-memo { font-size: 12px; color: var(--ink-soft); margin-top: 4px; white-space: pre-wrap; }
+.rec-item .r-addr { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+.rec-item .p-btn { width: 28px; height: 28px; }
 .place .p-memo {
   font-size: 12px;
   color: var(--ink-soft);
@@ -1364,8 +1380,11 @@ const WEATHER_LABELS = {
   95:'뇌우', 96:'뇌우', 99:'강한 뇌우',
 };
 
+// 경로 밖 추천 장소 여부 (category === 'recommendation'): 번호·동선·정렬·비용 합계에서 제외
+const isRec = (p) => p && p.category === 'recommendation';
+
 const getDayLocation = (day) => {
-  const places = state.places.filter(p => p.day === day && typeof p.lat === 'number' && typeof p.lng === 'number');
+  const places = state.places.filter(p => !isRec(p) && p.day === day && typeof p.lat === 'number' && typeof p.lng === 'number');
   if (!places.length) return null;
   const lats = places.map(p => p.lat).sort((a,b) => a-b);
   const lngs = places.map(p => p.lng).sort((a,b) => a-b);
@@ -1686,9 +1705,9 @@ const renderTripMeta = () => {
   const metaEl = $('#trip-meta');
   metaEl.innerHTML = '';
   if (!state.currentTrip) return;
-  const dayPlaces = state.currentDay <= 0
+  const dayPlaces = (state.currentDay <= 0
     ? state.places
-    : state.places.filter(p => p.day === state.currentDay);
+    : state.places.filter(p => p.day === state.currentDay)).filter(p => !isRec(p));
   const total = dayPlaces.reduce((s, p) => s + (Number(p.cost) || 0), 0);
   if (total > 0) {
     metaEl.appendChild(el('span', { class: 'cost-sum' }, `예상 ${won(total)}`));
@@ -1754,9 +1773,11 @@ const renderPlaces = () => {
   list.innerHTML = '';
   if (!state.currentTrip) return;
 
-  const dayPlaces = state.currentDay === 0
+  const allDayPlaces = state.currentDay === 0
     ? state.places
     : state.places.filter(p => p.day === state.currentDay);
+  const dayPlaces = allDayPlaces.filter(p => !isRec(p));
+  const dayRecs = allDayPlaces.filter(isRec);
 
   if (!dayPlaces.length) {
     const dayLabel = state.currentDay === 0 ? '전체' : `Day ${state.currentDay}`;
@@ -1799,7 +1820,47 @@ const renderPlaces = () => {
     });
   }
   list.appendChild(timeline);
+  appendRecSection(list, dayRecs, state.currentDay === 0);
   list.appendChild(el('button', { class: 'add-place-btn', onclick: () => openPlaceModal() }, '＋ 장소 추가'));
+};
+
+// 📌 경로 밖 추천 장소: 접이식 섹션 (번호·이동 구간·끌어서 정렬 없음)
+const appendRecSection = (parent, recs, showDay) => {
+  if (!recs.length) return;
+  const sec = el('details', { class: 'rec-section', ontoggle: (e) => { state.recOpen = e.target.open; } }, [
+    el('summary', {}, `📌 근처 추천 ${recs.length}곳 (동선 제외)`),
+    el('div', { class: 'rec-hint' }, '지도에서는 보라색 별 핀으로 표시되며 이동 경로에 연결되지 않습니다.'),
+  ]);
+  if (state.recOpen) sec.setAttribute('open', '');
+  let lastDay = null;
+  recs.forEach(p => {
+    if (showDay && p.day !== lastDay) { sec.appendChild(el('div', { class: 'rec-day' }, `Day ${p.day}`)); lastDay = p.day; }
+    const q = [p.name || '', p.address || ''].filter(Boolean).join(' ').trim();
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q || `${p.lat},${p.lng}`)}`;
+    const item = el('div', {
+      class: 'rec-item' + (p.id === state.focusedPlaceId ? ' focused' : ''),
+      onclick: (ev) => { if (ev.target.closest('.p-btn')) return; focusPlaceOnMap(p); },
+    }, [
+      el('div', { class: 'r-head' }, [
+        el('div', { class: 'r-name' }, p.name || ''),
+        el('div', { class: 'r-side' }, [
+          el('a', { class: 'p-btn', href: mapsUrl, target: '_blank', rel: 'noopener', title: '구글맵에서 보기', html: ICON.map, onclick: (e) => e.stopPropagation() }),
+          el('button', { class: 'p-btn', title: '수정', html: ICON.edit, onclick: (e) => { e.stopPropagation(); openPlaceModal(p); } }),
+          el('button', { class: 'p-btn p-btn-del', title: '삭제', html: ICON.trash, onclick: async (e) => {
+            e.stopPropagation();
+            if (!confirm(`"${p.name || '이 장소'}"을(를) 삭제하시겠습니까?`)) return;
+            try { await deletePlace(state.currentTripId, p.id); toast('장소가 삭제되었습니다'); }
+            catch (err) { console.error(err); toast('삭제 실패: ' + err.message); }
+          } }),
+        ]),
+      ]),
+      p.address ? el('div', { class: 'r-addr' }, p.address) : null,
+      p.memo ? el('div', { class: 'r-memo' }, p.memo) : null,
+    ]);
+    item.dataset.pid = p.id;
+    sec.appendChild(item);
+  });
+  parent.appendChild(sec);
 };
 
 const isNow = (place, next, nowTime) => {
@@ -1967,7 +2028,7 @@ const movePlace = async (tripId, id, t) => {
   const moving = state.places.find(x => x.id === id);
   if (!moving) return;
   let destDay, destList;
-  const others = (d) => state.places.filter(x => x.day === d && x.id !== id);
+  const others = (d) => state.places.filter(x => !isRec(x) && x.day === d && x.id !== id);
   if (t.type === 'tab') {
     destDay = t.day;
     destList = others(destDay).concat(moving);
@@ -2365,15 +2426,15 @@ const clearMap = () => {
 
 // 카드 ↔ 지도 연동: 카드를 누르면 해당 장소로 지도 이동 + 강조
 const highlightFocus = () => {
-  $$('.place.focused').forEach(n => n.classList.remove('focused'));
+  $$('.place.focused, .rec-item.focused').forEach(n => n.classList.remove('focused'));
   if (state.focusedPlaceId) {
-    const c = $(`.place[data-pid="${state.focusedPlaceId}"]`);
+    const c = $(`.place[data-pid="${state.focusedPlaceId}"], .rec-item[data-pid="${state.focusedPlaceId}"]`);
     if (c) c.classList.add('focused');
   }
   state.markers.forEach(m => {
     const on = m.__pid === state.focusedPlaceId;
     const ic = m.getIcon();
-    if (ic) m.setIcon({ ...ic, scale: on ? 18 : 14, fillColor: on ? '#d9822b' : '#1f4b8e' });
+    if (ic) m.setIcon({ ...ic, scale: m.__rec ? (on ? 15 : 11) : (on ? 18 : 14), fillColor: on ? '#d9822b' : (m.__rec ? '#7b4bb0' : '#1f4b8e') });
     m.setZIndex(on ? 999 : null);
   });
 };
@@ -2403,8 +2464,9 @@ const renderMap = () => {
   }
 
   const toShow = state.currentDay <= 0 ? state.places : state.places.filter(p => p.day === state.currentDay);
-  const placesWithCoord = toShow.filter(p => p.lat && p.lng);
-  if (!placesWithCoord.length) {
+  const placesWithCoord = toShow.filter(p => p.lat && p.lng && !isRec(p));
+  const recWithCoord = toShow.filter(p => p.lat && p.lng && isRec(p));
+  if (!placesWithCoord.length && !recWithCoord.length) {
     showLegend('장소를 추가하면 지도에 표시됩니다');
     return;
   }
@@ -2472,6 +2534,28 @@ const renderMap = () => {
     }
   });
 
+  // 경로 밖 추천: 보라색 별 핀, 경로선 연결 없음
+  recWithCoord.forEach(p => {
+    const marker = new google.maps.Marker({
+      position: { lat: p.lat, lng: p.lng },
+      map: state.map,
+      label: { text: '★', color: '#fff', fontSize: '11px', fontWeight: '600' },
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: '#7b4bb0', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 },
+      title: '추천: ' + (p.name || ''),
+    });
+    const q = [p.name || '', p.address || ''].filter(Boolean).join(' ').trim() || `${p.lat},${p.lng}`;
+    const info = new google.maps.InfoWindow({
+      content: `<div class="iw-content">
+        <div class="iw-name">${escapeHtml(p.name || '')}</div>
+        ${p.memo && p.memo.trim() ? `<div class="iw-memo">${escapeHtml(p.memo.trim())}</div>` : ''}
+        <div class="iw-actions"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}" target="_blank" rel="noopener">📍 구글 맵에서 보기</a></div>
+      </div>`
+    });
+    marker.__pid = p.id; marker.__info = info; marker.__rec = true;
+    marker.addListener('click', () => focusPlaceOnMap(p, true));
+    state.markers.push(marker);
+  });
+
   fitMapBounds(false);
   highlightFocus();
 
@@ -2481,9 +2565,10 @@ const renderMap = () => {
     const prev = placesWithCoord[i-1];
     return s + haversine({lat:prev.lat,lng:prev.lng}, {lat:p.lat,lng:p.lng});
   }, 0);
+  const recTxt = recWithCoord.length ? ` · 추천 ${recWithCoord.length}곳` : '';
   const label = state.currentDay <= 0
-    ? `전체 · ${placesWithCoord.length}곳 · ${fmtDistance(totalDist)}`
-    : `Day ${state.currentDay} · ${placesWithCoord.length}곳 · ${fmtDistance(totalDist)}`;
+    ? `전체 · ${placesWithCoord.length}곳 · ${fmtDistance(totalDist)}${recTxt}`
+    : `Day ${state.currentDay} · ${placesWithCoord.length}곳 · ${fmtDistance(totalDist)}${recTxt}`;
   showLegend(label);
 };
 
@@ -2889,7 +2974,7 @@ $('#btn-save-place').onclick = async () => {
   };
   // 새 장소의 orderNo = 그 Day의 마지막 + 1
   if (!state.editingPlaceId) {
-    const siblings = state.places.filter(p => p.day === data.day);
+    const siblings = state.places.filter(p => !isRec(p) && p.day === data.day);
     data.orderNo = siblings.length + 1;
   }
   try {
