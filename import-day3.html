@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>트립노트 — Day3 일정 임포트</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; background: #f3efe7; color: #1b1d22; }
+  h1 { font-size: 20px; }
+  .log { background: #fff; border-radius: 8px; padding: 16px; margin-top: 16px; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
+  .ok { color: #6b8e5a; } .err { color: #c0392b; } .info { color: #1f4b8e; }
+  button { background: #1f4b8e; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-size: 15px; cursor: pointer; margin-top: 16px; }
+  button:disabled { opacity: 0.5; }
+</style>
+</head>
+<body>
+<h1>10/26 카페투어 일정 임포트</h1>
+<p>아래 버튼을 누르면 Day 3 (10/26) 일정이 트립노트에 자동 추가됩니다.</p>
+<button id="btn" onclick="run()">일정 추가 시작</button>
+<div class="log" id="log"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getFirestore, collection, getDocs, setDoc, doc, query, orderBy, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDBqjzu7vZ3FkTPLKYLgN9Gzl-AJGq8a7s",
+  authDomain: "tripnote-511209.firebaseapp.com",
+  projectId: "tripnote-511209",
+  storageBucket: "tripnote-511209.firebasestorage.app",
+  messagingSenderId: "520118311762",
+  appId: "1:520118311762:web:15f44c6a973dbdd70b388b"
+};
+
+const app = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(app);
+const logEl = document.getElementById('log');
+const log = (msg, cls='info') => { logEl.innerHTML += `<span class="${cls}">${msg}</span>\n`; };
+
+window.run = async () => {
+  document.getElementById('btn').disabled = true;
+  try {
+    log('여행 목록 조회 중...');
+    const q = query(collection(db, 'trips'), orderBy('startDate', 'desc'));
+    const snap = await getDocs(q);
+    const trips = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const kyoto = trips.find(t =>
+      t.startDate === '2026-10-24' ||
+      (t.title && (t.title.includes('교토') || t.title.includes('京都') || t.title.includes('Kyoto')))
+    );
+
+    if (!kyoto) {
+      log('교토 여행을 찾을 수 없습니다! 여행 목록:', 'err');
+      trips.forEach(t => log(`  - ${t.title} (${t.startDate}~${t.endDate})`, 'err'));
+      return;
+    }
+    log(`여행 발견: "${kyoto.title}" (${kyoto.startDate}~${kyoto.endDate}), ID: ${kyoto.id}`, 'ok');
+
+    const tripId = kyoto.id;
+    // 10/24=Day1, 10/25=Day2, 10/26=Day3
+    const dayNum = Math.round((new Date('2026-10-26') - new Date(kyoto.startDate)) / 86400000) + 1;
+    log(`10/26 = Day ${dayNum}`);
+
+    // 기존 Day3 장소 확인
+    const existSnap = await getDocs(collection(db, 'trips', tripId, 'places'));
+    const existDay3 = existSnap.docs.map(d => ({id: d.id, ...d.data()})).filter(p => p.day === dayNum);
+    if (existDay3.length > 0) {
+      log(`기존 Day${dayNum} 장소 ${existDay3.length}개 삭제 중...`);
+      for (const p of existDay3) {
+        await deleteDoc(doc(db, 'trips', tripId, 'places', p.id));
+        log(`  삭제: ${p.name}`, 'info');
+      }
+      log('기존 장소 삭제 완료', 'ok');
+    }
+
+    // === 경로 장소 ===
+    const places = [
+      {
+        day: dayNum, orderNo: 1, category: 'route',
+        name: '알라 호텔 교토 출발',
+        address: '京都市下京区東塩小路釜殿町1-2 (교토역 앞)',
+        lat: 34.9856, lng: 135.7580,
+        arriveTime: '10:00', departTime: '10:15',
+        memo: '호텔 조식 후 출발\n\n[이동] 교토역 → 지하철 가라스마선 국제회관 방면 탑승 → 시조역(四条駅) 하차 (1정거장, 약 3분, 220엔)\n시조역 2번 출구로 나와 동쪽(히가시)으로 도보 5분 → 시조오하시(四条大橋)에서 가모강 도착',
+        transitMode: 'TRAIN', cost: 220,
+      },
+      {
+        day: dayNum, orderNo: 2, category: 'route',
+        name: '가모강 산책 (시조→산조)',
+        address: '京都市 鴨川 四条大橋〜三条大橋',
+        lat: 35.0048, lng: 135.7710,
+        arriveTime: '10:30', departTime: '11:00',
+        memo: '시조오하시(四条大橋) 서쪽 계단으로 강변 산책로 진입\n북쪽(산조 방향)으로 약 1km 도보 (약 15분)\n"등간격 앉기"로 유명한 커플 명소\n강변 벤치에서 잠시 쉬며 풍경 감상\n\n[이동] 산조오하시(三条大橋)까지 걸은 뒤, 강변에서 남쪽으로 되돌아 키야마치도리(木屋町通) 골목으로 진입 → 도보 약 8분',
+        transitMode: 'WALK', cost: 0,
+      },
+      {
+        day: dayNum, orderNo: 3, category: 'route',
+        name: '카와카페 (Kawa Cafe)',
+        address: '京都市下京区木屋町通松原上る2丁目',
+        lat: 34.9990, lng: 135.7700,
+        arriveTime: '11:00', departTime: '12:15',
+        memo: '가모강 테라스석 카페 (프랑스인 오너)\n추천: 타르트+커피 세트\n테라스 차지: 250엔 (17시 이후 500엔)\n영업: 10:00-23:30 (무휴)\n\n[이동] 카페 나와서 키야마치도리 → 시조카와라마치 교차로 방면 도보 약 5분 → 시조카와라마치(四条河原町) 버스정류장 E승강장에서 5번 또는 17번 버스 탑승 → 긴카쿠지마에(銀閣寺前) 하차 (약 25분, 230엔)',
+        transitMode: 'WALK', cost: 1500,
+      },
+      {
+        day: dayNum, orderNo: 4, category: 'route',
+        name: '철학의 길 (哲学の道)',
+        address: '京都市左京区 銀閣寺橋〜若王子橋',
+        lat: 35.0268, lng: 135.7963,
+        arriveTime: '13:00', departTime: '14:15',
+        memo: '버스 하차 후 긴카쿠지(은각사) 방면 도보 5분 → 철학의 길 북쪽 입구\n은각사 방면에서 난젠지 방향(남쪽)으로 약 2km 산책\n쉬지 않고 걸으면 30분, 카페 들르면 1시간+\n경로중 추천 카페: bench(レモンドーナツ, ブレンドティー)\n\n[이동] 철학의 길 남쪽 종점(난젠지 부근)에서 서쪽 방향 도보 약 15분',
+        transitMode: 'BUS', cost: 230,
+      },
+      {
+        day: dayNum, orderNo: 5, category: 'route',
+        name: '사료 호센 (茶寮 宝泉)',
+        address: '京都市左京区下鴨西高木町25',
+        lat: 35.0397, lng: 135.7737,
+        arriveTime: '14:30', departTime: '15:45',
+        memo: '💴 현금만 가능 (카드 불가)!\n추천: 와라비모찌 1,500엔 / 계절 상생과자+말차 세트 950엔\n좌식 9석, 오픈 직후가 한산\n영업: 10:00-17:00 (LO 16:45)\n정기휴일: 수·목 → 월요일 영업 ✅\n\n[이동] 사료 호센 → 택시 약 10분 (약 1,000엔) → 무린안\n또는 시모가모혼도리 버스정류장에서 204번 버스 → 게아게역 부근 하차 후 도보 7분',
+        transitMode: 'WALK', cost: 1500,
+      },
+      {
+        day: dayNum, orderNo: 6, category: 'route',
+        name: '무린안 (無鄰菴)',
+        address: '京都市左京区南禅寺草川町31',
+        lat: 35.0117, lng: 135.7907,
+        arriveTime: '16:00', departTime: '17:00',
+        memo: '⚠️ 사전예약 필수 (murin-an.jp, 1시간당 30명 제한)\n입장료: 600~1,300엔 (날짜에 따라 변동)\n10월 영업: 9:00-17:00 (입장마감 16:30)\n게아게역에서 도보 7분\n메이지 시대 야마가타 아리토모의 별장 정원\n\n[이동] 무린안 → 도보 10분 → 게아게역(蹴上駅)에서 지하철 도자이선 산조케이한 방면 탑승 → 산조케이한역 하차 → 게이한선 환승 → 기온시조역 하차 (약 10분, 260엔)',
+        transitMode: 'TAXI', cost: 1600,
+      },
+      {
+        day: dayNum, orderNo: 7, category: 'route',
+        name: '기온·폰토초 저녁',
+        address: '京都市東山区 祇園・先斗町',
+        lat: 35.0037, lng: 135.7756,
+        arriveTime: '17:30', departTime: '20:00',
+        memo: '기온시조역 6번 출구 → 하나미코지(花見小路) 또는 폰토초(先斗町) 골목에서 저녁\n식후 야사카신사·하나미코지 야경 산책 가능\n\n[이동] 기온시조역 → 게이한선 → 토후쿠지역 환승 JR나라선 → 교토역 (약 15분, 220엔)\n또는 시조카와라마치에서 지하철 한큐선 → 가라스마역 환승 가라스마선 → 교토역 (약 10분, 440엔)\n또는 택시 약 15분 (약 1,500엔)',
+        transitMode: 'TRAIN', cost: 260,
+      },
+      {
+        day: dayNum, orderNo: 8, category: 'route',
+        name: '호텔 복귀',
+        address: '京都市下京区東塩小路釜殿町1-2',
+        lat: 34.9856, lng: 135.7580,
+        arriveTime: '20:30', departTime: '',
+        memo: '',
+        transitMode: 'TRAIN', cost: 220,
+      },
+    ];
+
+    // === 추천 장소 (경로 밖) ===
+    const recommendations = [
+      {
+        day: dayNum, orderNo: 1, category: 'recommendation',
+        name: 'bench (ベンチ)',
+        address: '京都市左京区浄土寺石橋町 哲学の道沿い',
+        lat: 35.0230, lng: 135.7940,
+        arriveTime: '', departTime: '',
+        memo: '철학의 길 중간 카페. 추천: 레몬 도넛, 블렌드 티',
+        transitMode: 'WALK', cost: 800,
+      },
+    ];
+
+    const allPlaces = [...places, ...recommendations];
+    let count = 0;
+    for (const p of allPlaces) {
+      const newId = 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      await setDoc(doc(db, 'trips', tripId, 'places', newId), { ...p, createdAt: serverTimestamp() });
+      count++;
+      log(`  추가 (${count}/${allPlaces.length}): ${p.name} ${p.category === 'recommendation' ? '⭐추천' : ''}`, 'ok');
+      await new Promise(r => setTimeout(r, 80));
+    }
+
+    // === 체크리스트 ===
+    log('체크리스트 추가 중...');
+    const checkItems = [
+      { text: '무린안 입장 예약 (murin-an.jp → 10/26 16:00)', category: '예약', done: false, note: '1시간당 30명 제한', orderNo: 100 },
+      { text: '현금 준비 (사료 호센용, 최소 3,000엔)', category: '준비물', done: false, note: '카드 불가', orderNo: 101 },
+    ];
+    for (const item of checkItems) {
+      const newId = 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      await setDoc(doc(db, 'trips', tripId, 'checklist', newId), { ...item, createdAt: serverTimestamp() });
+      log(`  체크리스트: ${item.text}`, 'ok');
+      await new Promise(r => setTimeout(r, 80));
+    }
+
+    log(`\n✅ 완료! Day${dayNum} 장소 ${count}개 + 체크리스트 ${checkItems.length}개 추가됨`, 'ok');
+    log('트립노트 메인으로 돌아가서 확인하세요 → tripnote', 'ok');
+
+  } catch(e) {
+    log('오류: ' + e.message, 'err');
+    console.error(e);
+  }
+  document.getElementById('btn').disabled = false;
+};
+</script>
+</body>
+</html>
