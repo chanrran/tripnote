@@ -21,7 +21,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getFirestore, collection, getDocs, setDoc, doc, query, orderBy, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getFirestore, collection, getDocs, setDoc, doc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDBqjzu7vZ3FkTPLKYLgN9Gzl-AJGq8a7s",
@@ -62,17 +62,13 @@ window.run = async () => {
     const dayNum = Math.round((new Date('2026-10-26') - new Date(kyoto.startDate)) / 86400000) + 1;
     log(`10/26 = Day ${dayNum}`);
 
-    // 기존 Day3 장소 확인
+    // 기존 Day3 장소 수 확인 (orderNo 이어붙이기용)
     const existSnap = await getDocs(collection(db, 'trips', tripId, 'places'));
-    const existDay3 = existSnap.docs.map(d => ({id: d.id, ...d.data()})).filter(p => p.day === dayNum);
-    if (existDay3.length > 0) {
-      log(`기존 Day${dayNum} 장소 ${existDay3.length}개 삭제 중...`);
-      for (const p of existDay3) {
-        await deleteDoc(doc(db, 'trips', tripId, 'places', p.id));
-        log(`  삭제: ${p.name}`, 'info');
-      }
-      log('기존 장소 삭제 완료', 'ok');
-    }
+    const existDay3 = existSnap.docs.map(d => ({id: d.id, ...d.data()})).filter(p => p.day === dayNum && p.category !== 'recommendation');
+    const existRec3 = existSnap.docs.map(d => ({id: d.id, ...d.data()})).filter(p => p.day === dayNum && p.category === 'recommendation');
+    const orderOffset = existDay3.length;
+    const recOffset = existRec3.length;
+    log(`기존 Day${dayNum} 장소 ${existDay3.length}개 유지, 뒤에 추가합니다`);
 
     // === 경로 장소 ===
     const places = [
@@ -162,6 +158,10 @@ window.run = async () => {
         transitMode: 'WALK', cost: 800,
       },
     ];
+
+    // orderNo를 기존 장소 뒤에 이어붙이기
+    places.forEach(p => { p.orderNo += orderOffset; });
+    recommendations.forEach(p => { p.orderNo += recOffset; });
 
     const allPlaces = [...places, ...recommendations];
     let count = 0;
