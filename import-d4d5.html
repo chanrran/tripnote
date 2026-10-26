@@ -222,7 +222,38 @@ window.run = async function() {
     });
     await batch2.commit();
     log('✅ D4·D5 장소 14개 추가 완료!', 'ok');
-    log('트립노트 앱으로 돌아가서 확인하세요.', 'ok');
+
+    // 검증: 방금 저장한 데이터 다시 읽어서 lat/lng 타입 확인
+    log('📍 좌표 검증 중...');
+    const verifySnap = await getDocs(collection(db, 'trips', TRIP_ID, 'places'));
+    let totalD45 = 0;
+    let coordOk = 0;
+    let coordBad = 0;
+    let details = [];
+    verifySnap.forEach(d => {
+      const data = d.data();
+      if (data.day === 4 || data.day === 5) {
+        totalD45++;
+        const latOk = typeof data.lat === 'number' && data.lat > 30;
+        const lngOk = typeof data.lng === 'number' && data.lng > 130;
+        if (latOk && lngOk) {
+          coordOk++;
+        } else {
+          coordBad++;
+          details.push(`⚠️ ${data.name}: lat=${JSON.stringify(data.lat)} (${typeof data.lat}), lng=${JSON.stringify(data.lng)} (${typeof data.lng})`);
+        }
+      }
+    });
+
+    if (coordBad > 0) {
+      details.forEach(d => log(d, 'warn'));
+      log(`❌ 좌표 문제 ${coordBad}개 발견! 지도 핀이 안 보일 수 있습니다.`, 'err');
+    } else {
+      log(`✅ 전체 ${totalD45}개 장소 좌표 정상 확인! (lat: number, lng: number)`, 'ok');
+    }
+
+    log('🔄 트립노트 앱으로 돌아가서 새로고침 해주세요!', 'ok');
+    log('(페이지를 아래로 당기거나, D4/D5 탭을 다시 눌러주세요)', 'ok');
 
     btn.textContent = '✅ 완료';
   } catch(e) {
